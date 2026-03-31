@@ -1,0 +1,5 @@
+/* Next.js global styles.
+   The actual app styling is imported from the legacy CSS. */
+
+@import "../src/legacy/styles/main.css";
+
