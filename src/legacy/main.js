@@ -29,9 +29,7 @@ function renderApp() {
       </div>
       <div class="header-right">
         <div class="rate-badge">₱${state.phpRate.toFixed(1)}/USD</div>
-        ${state.ebayKey
-          ? `<div class="rate-badge" style="color:var(--green);border-color:#1a5c3a">eBay connected</div>`
-          : `<div class="rate-badge" style="color:var(--amber);border-color:#4a3010">No eBay key</div>`}
+        <div class="rate-badge" style="color:var(--text-secondary)">eBay via server proxy</div>
       </div>
     </header>
 

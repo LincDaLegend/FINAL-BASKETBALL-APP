@@ -5,7 +5,7 @@ import { CATEGORIES, CAT_BADGE_CLASS } from '../utils/constants.js';
 export function renderSearch() {
   return `
     <div class="page-title">Search Listings</div>
-    <div class="page-subtitle">Live eBay search · Scored using your deal history</div>
+    <div class="page-subtitle">Live eBay search (via server proxy) · Scored using your deal history</div>
 
     <div class="search-area">
       <div class="search-row">
@@ -28,7 +28,7 @@ export function renderSearch() {
     </div>
 
     ${state.notify ? renderNotify(state.notify) : ''}
-    ${!state.ebayKey ? renderNotify({ type: 'info', msg: 'No eBay API key set — go to Settings to add it before searching.' }) : ''}
+    ${renderNotify({ type: 'info', msg: 'To enable search on Vercel: set EBAY_APP_ID in your Vercel Project → Settings → Environment Variables.' })}
 
     ${state.results.length > 0 ? `
       <div class="pill-row">
@@ -123,12 +123,6 @@ export async function doSearch() {
 
   if (!state.query && !state.category) {
     state.notify = { type: 'err', msg: 'Enter a player name or pick a category first.' };
-    window.renderApp();
-    return;
-  }
-
-  if (!state.ebayKey) {
-    state.notify = { type: 'err', msg: 'Add your eBay API key in Settings first.' };
     window.renderApp();
     return;
   }

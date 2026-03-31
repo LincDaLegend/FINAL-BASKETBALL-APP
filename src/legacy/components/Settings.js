@@ -8,26 +8,15 @@ export function renderSettings() {
     ${state.notify ? renderNotify(state.notify) : ''}
 
     <div class="settings-group">
-      <h3>eBay API key</h3>
+      <h3>eBay API key (Vercel)</h3>
       <p>
         Get your key at <a href="https://developer.ebay.com" target="_blank" rel="noopener" style="color:var(--accent)">developer.ebay.com</a>
-        → Create app → Production App ID (Client ID).<br/>
-        The key is stored only in your browser's local storage.
+        → Create app → Production App ID (Client ID).<br/><br/>
+        <strong style="color:var(--text-secondary)">Where to add it:</strong><br/>
+        Vercel → Project → Settings → Environment Variables → add <span class="mono">EBAY_APP_ID</span>.
       </p>
-      <div style="display:flex;gap:10px;flex-wrap:wrap">
-        <input
-          id="key-input"
-          type="password"
-          placeholder="Paste your eBay Production App ID (Client ID)"
-          value="${escHtml(state.ebayKey)}"
-          style="flex:3;min-width:200px"
-        />
-        <button class="btn-primary" onclick="window.saveEbayKey()">Save key</button>
-        ${state.ebayKey ? `<button class="btn-danger" onclick="window.clearEbayKey()">Remove</button>` : ''}
-      </div>
-      ${state.ebayKey ? `<div style="font-size:12px;color:var(--green);margin-top:8px">✓ eBay key is set</div>` : `<div style="font-size:12px;color:var(--amber);margin-top:8px">⚠ No eBay key — live search is disabled</div>`}
       <div style="font-size:12px;color:var(--text-muted);margin-top:8px">
-        Deployed on Vercel: searches run through a server proxy so the eBay key isn't exposed in browser network calls.
+        Searches run through a server proxy (<span class="mono">/api/ebay/search</span>) so the key is not exposed in the browser.
       </div>
     </div>
 
@@ -69,22 +58,12 @@ export function renderSettings() {
 }
 
 export function saveEbayKey() {
-  const key = document.getElementById('key-input')?.value?.trim();
-  if (!key) {
-    state.notify = { type: 'err', msg: 'Please paste your eBay App ID.' };
-    window.renderApp();
-    return;
-  }
-  state.ebayKey = key;
-  persistSettings();
-  state.notify = { type: 'ok', msg: 'eBay API key saved.' };
+  state.notify = { type: 'info', msg: 'Set EBAY_APP_ID in Vercel Environment Variables (server-side).' };
   window.renderApp();
 }
 
 export function clearEbayKey() {
-  state.ebayKey = '';
-  persistSettings();
-  state.notify = { type: 'ok', msg: 'eBay key removed.' };
+  state.notify = { type: 'info', msg: 'eBay key is configured server-side on Vercel (EBAY_APP_ID).' };
   window.renderApp();
 }
 
