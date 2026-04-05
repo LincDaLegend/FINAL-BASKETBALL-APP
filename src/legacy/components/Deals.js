@@ -1,5 +1,6 @@
 import { state, persistDeals, persistSettings, emptyDeal, dealStats } from '../utils/state.js';
 import { CATEGORIES, CAT_LABEL, GRADES, CAT_BADGE_CLASS } from '../utils/constants.js';
+import { getPlayerCategory } from '../utils/api.js';
 import { extractFeatures, learnFromDeal } from '../utils/ml.js';
 import { trainOnDeals, saveModel } from '../utils/tfModel.js';
 import { buildEmbeddingModel } from '../utils/embedding.js';
@@ -613,9 +614,11 @@ export function processXlsxImport() {
     let grade = mapping.grade ? String(row[mapping.grade] || '').trim() : 'raw';
     if (!GRADES.includes(grade)) grade = 'raw';
 
-    // Map category — try to recognise known categories
-    let category = mapping.category ? String(row[mapping.category] || '').trim().toLowerCase() : 'volatile';
-    if (!CATEGORIES.includes(category)) category = 'volatile';
+    // Map category — try to recognise known categories, otherwise auto-detect from player name
+    let category = mapping.category ? String(row[mapping.category] || '').trim().toLowerCase() : '';
+    if (!CATEGORIES.includes(category)) {
+      category = getPlayerCategory(player, state.playerCategories) || 'volatile';
+    }
 
     state.deals.push({
       id:        Date.now() + imported,

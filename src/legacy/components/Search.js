@@ -264,13 +264,8 @@ export async function doSearch() {
     }
 
     listings.forEach(l => {
-      try {
-        l.aiScore = ruleMLScore(l, null, state.rules, state.deals, state.mlFeatureWeights);
-        if (!Number.isFinite(l.aiScore)) l.aiScore = 30;
-      } catch (err) {
-        console.error('Score error:', err, l);
-        l.aiScore = 30;
-      }
+      l.aiScore = ruleMLScore(l, null, state.rules, state.deals, state.mlFeatureWeights);
+      if (!Number.isFinite(l.aiScore)) l.aiScore = 0;
     });
 
     state.results = [...listings].sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));
