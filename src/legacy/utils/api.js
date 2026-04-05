@@ -107,10 +107,10 @@ export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
 
   // Auto-detect player demand tier from listing title
   const detectedCat = getPlayerCategory(listing.title, state.playerCategories);
-  const rule = rules[detectedCat] || null;
+  const rule = (rules && detectedCat) ? (rules[detectedCat] || null) : null;
 
   // Build estimated ROI using personal deal history for this player tier
-  const catDeals = detectedCat ? deals.filter(d => d.category === detectedCat) : [];
+  const catDeals = detectedCat ? (deals || []).filter(d => d.category === detectedCat) : [];
   const personalMultiplier = catDeals.length >= 2
     ? 1 + Math.min(1.5, Math.max(0, catDeals.reduce((a, d) => a + (d.roi || 0), 0) / catDeals.length / 100))
     : 1.20;

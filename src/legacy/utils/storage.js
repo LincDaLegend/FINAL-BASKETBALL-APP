@@ -1,7 +1,9 @@
 export function load(key, defaultVal) {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : defaultVal;
+    if (!raw) return defaultVal;
+    const parsed = JSON.parse(raw);
+    return (parsed !== null && parsed !== undefined) ? parsed : defaultVal;
   } catch {
     return defaultVal;
   }
