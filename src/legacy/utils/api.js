@@ -1,7 +1,11 @@
 import { EBAY_FINDING_API, PHP_RATE, DEFAULT_SET_RARITY_TIERS } from './constants.js';
 import { state } from './state.js';
 import { extractFeatures, mlScore, DEFAULT_WEIGHTS } from './ml.js';
-import { predictScore } from './tfModel.js';
+// predictScore loaded dynamically to avoid bundling TF.js into the critical path
+let _predictScore = null;
+if (typeof window !== 'undefined') {
+  import('./tfModel.js').then(m => { _predictScore = m.predictScore; }).catch(() => {});
+}
 import { listingEmbScore } from './embedding.js';
 
 // ── Set / card rarity scoring ─────────────────────────────────────────────────
@@ -190,8 +194,8 @@ export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
   const featureScore  = mlScore(features, weights, listingPlayer) / 100; // 0–1
 
   // Neural network score (TF.js) — used when model has been trained on ≥3 deals
-  const tfScore = state.tfModelReady && state.tfModel
-    ? predictScore(state.tfModel, listing, 500) / 100
+  const tfScore = (state.tfModelReady && state.tfModel && _predictScore)
+    ? _predictScore(state.tfModel, listing, 500) / 100
     : null;
 
   // Semantic embedding score — how similar is this listing to your past winners?
