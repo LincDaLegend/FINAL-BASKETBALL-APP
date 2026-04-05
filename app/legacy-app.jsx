@@ -24,6 +24,6 @@ export default function LegacyApp() {
     };
   }, []);
 
-  return <div id="app" />;
+  return <div id="app" suppressHydrationWarning />;
 }
 

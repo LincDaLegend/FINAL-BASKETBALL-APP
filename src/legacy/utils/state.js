@@ -1,17 +1,23 @@
 import { load, save } from './storage.js';
-import { DEFAULT_RULES, SAMPLE_DEALS } from './constants.js';
+import { DEFAULT_RULES, DEFAULT_PLAYER_CATEGORIES, DEFAULT_SET_RARITY_TIERS, SAMPLE_DEALS } from './constants.js';
 
 export const state = {
   tab: 'search',
 
   // Settings
-  ebayKey: load('ebayKey', ''),
+  ebayKey:    load('ebayKey', ''),
+  ebaySecret: load('ebaySecret', ''),
+  ebayRuName: load('ebayRuName', ''),   // RuName from eBay developer portal (used as redirect_uri in OAuth)
+  ebayUser:   load('ebayUser', null),   // eBay username after OAuth connect, or null
+  mlFeatureWeights: load('mlFeatureWeights', null), // null = use DEFAULT_WEIGHTS
   phpRate: load('phpRate', 57.2),
   mlWeights: load('mlWeights', { roi: 0.6, speed: 0.4 }),
 
   // Search
   query: '',
   category: '',
+  listingType: 'all',   // 'all' | 'fixed' | 'auction'
+  itemLocation: 'us',   // 'all' | 'us'
   results: [],
   loading: false,
   verdictFilter: '',
@@ -20,27 +26,83 @@ export const state = {
   // Deals (ML training data)
   deals: load('deals', SAMPLE_DEALS),
 
-  // Rules
+  // Rules (per player-category scoring config)
   rules: load('rules', DEFAULT_RULES),
+
+  // Player category membership — who falls under each demand tier
+  playerCategories: load('playerCategories', DEFAULT_PLAYER_CATEGORIES),
+
+  // Set rarity tier membership — which sets/keywords belong to each rarity class
+  setRarityTiers: load('setRarityTiers', DEFAULT_SET_RARITY_TIERS),
+
+  // Active subtab within the Player Tiers page (transient — not persisted)
+  rulesTab: 'players',  // 'players' | 'sets'
 
   // New deal form
   newDeal: emptyDeal(),
+
+  // Diagnostic session (transient, not persisted)
+  diagnosticSession: null,
+
+  // xlsx import session (transient)
+  xlsxImport: null,
+
+  // AI enrichment progress (transient)
+  enrichmentProgress: null,
+
+  // Buying segments identified from deal history (persisted)
+  segments: load('segments', []),
+  editingSegmentIdx: null, // null | number | 'new' — transient, not persisted
+
+  // TensorFlow.js neural network (client-side, not persisted in state — model saves to localStorage via tf.io)
+  tfModel: null,
+  tfModelReady: false,   // true once model trained on ≥3 deals
+
+  // TF-IDF semantic embedding model (in-memory, rebuilt from deals on startup/import/enrichment)
+  embModel: null,        // { idf, topVec, bottomVec } — see utils/embedding.js
+
+  // Diagnostic profile (persisted)
+  diagnosticProfile: load('diagnosticProfile', null),
+
+  // Suggested searches from diagnostic or trend analysis (persisted)
+  suggestedSearches: load('suggestedSearches', []),
+  suggestTrendNote: '',
+  suggestLoading: false,
+
+  // Card type preferences (persisted)
+  cardPrefs: load('cardPrefs', {
+    preferredSets: [],      // e.g. ['Prizm', 'Chrome']
+    preferGraded: null,     // true=graded, false=raw
+    preferredFinish: null,  // 'refractor'|'holo'|'standard'
+    preferStars: null,      // true=established, false=emerging
+    preferRare: null,       // true=numbered/SP, false=base
+  }),
 };
 
 export function emptyDeal() {
   return {
     player: '', year: '', set: '', variant: '',
     grade: 'raw', buyPrice: '', sellPrice: '',
-    days: '', category: 'low end', aesthetic: '', notes: '',
+    days: '', category: 'volatile', aesthetic: '', notes: '',
   };
 }
 
 export function persistDeals() { save('deals', state.deals); }
 export function persistRules()  { save('rules', state.rules); }
 export function persistSettings() {
-  save('ebayKey',    state.ebayKey);
-  save('phpRate',    state.phpRate);
-  save('mlWeights',  state.mlWeights);
+  save('ebayKey',            state.ebayKey);
+  save('ebaySecret',         state.ebaySecret);
+  save('ebayRuName',         state.ebayRuName);
+  save('ebayUser',           state.ebayUser);
+  save('phpRate',            state.phpRate);
+  save('mlWeights',          state.mlWeights);
+  save('cardPrefs',          state.cardPrefs);
+  save('mlFeatureWeights',   state.mlFeatureWeights);
+  save('diagnosticProfile',  state.diagnosticProfile);
+  save('suggestedSearches',  state.suggestedSearches);
+  save('segments',           state.segments);
+  save('playerCategories',   state.playerCategories);
+  save('setRarityTiers',     state.setRarityTiers);
 }
 
 export function dealStats() {
@@ -53,4 +115,3 @@ export function dealStats() {
     totalProfit: +d.reduce((a, x) => a + ((x.sellPrice - x.buyPrice) || 0), 0).toFixed(2),
   };
 }
-

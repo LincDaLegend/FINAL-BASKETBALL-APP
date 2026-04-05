@@ -8,16 +8,74 @@ export function renderSettings() {
     ${state.notify ? renderNotify(state.notify) : ''}
 
     <div class="settings-group">
-      <h3>eBay API key (Vercel)</h3>
+      <h3>eBay API credentials</h3>
       <p>
-        Get your key at <a href="https://developer.ebay.com" target="_blank" rel="noopener" style="color:var(--accent)">developer.ebay.com</a>
-        → Create app → Production App ID (Client ID).<br/><br/>
-        <strong style="color:var(--text-secondary)">Where to add it:</strong><br/>
-        Vercel → Project → Settings → Environment Variables → add <span class="mono">EBAY_APP_ID</span>.
+        Go to <a href="https://developer.ebay.com" target="_blank" rel="noopener" style="color:var(--accent)">developer.ebay.com</a>
+        → My Account → Application Keys → <strong>Production</strong> keys.
+        You need <strong>both</strong> the App ID (Client ID) and the Client Secret.
       </p>
-      <div style="font-size:12px;color:var(--text-muted);margin-top:8px">
-        Searches run through a server proxy (<span class="mono">/api/ebay/search</span>) so the key is not exposed in the browser.
+
+      <div style="display:flex;flex-direction:column;gap:10px;max-width:480px;margin-bottom:12px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">App ID (Client ID)</label>
+          <input
+            id="ebay-key-input"
+            type="password"
+            placeholder="YourName-AppName-PRD-xxxxxxxx-xxxxxxxx"
+            value="${escHtml(state.ebayKey)}"
+          />
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">Client Secret</label>
+          <input
+            id="ebay-secret-input"
+            type="password"
+            placeholder="PRD-xxxxxxxxxxxxxxxx-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            value="${escHtml(state.ebaySecret)}"
+          />
+        </div>
+        <div class="form-group" style="margin:0">
+          <label class="form-label">RuName <span style="font-weight:400;color:var(--text-muted)">(eBay developer portal → User Tokens → Get a Token from eBay via Your Application)</span></label>
+          <input
+            id="ebay-runame-input"
+            type="text"
+            placeholder="YourName-AppName-PRD-xxxxxxxx-xxxxxxxx"
+            value="${escHtml(state.ebayRuName)}"
+          />
+        </div>
       </div>
+
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="btn-primary" onclick="window.saveEbayKey()">Save credentials</button>
+        ${(state.ebayKey || state.ebaySecret) ? `<button class="btn-danger btn-sm" onclick="window.clearEbayKey()">Clear</button>` : ''}
+      </div>
+
+      ${(state.ebayKey && state.ebaySecret)
+        ? `<div style="font-size:12px;color:var(--green);margin-top:8px">✓ App ID and Client Secret saved</div>`
+        : state.ebayKey
+          ? `<div style="font-size:12px;color:var(--amber);margin-top:8px">App ID saved — Client Secret still needed for search to work.</div>`
+          : `<div style="font-size:12px;color:var(--text-muted);margin-top:8px">No credentials saved — searches will fail until both are added.</div>`
+      }
+    </div>
+
+    <div class="settings-group">
+      <h3>eBay account</h3>
+      <p>Connect your eBay account to place bids without leaving this page. Listings open in a compact popup window.</p>
+      ${state.ebayUser
+        ? `<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <div style="font-size:13px;color:var(--green)">✓ Connected as <strong>${escHtml(state.ebayUser)}</strong></div>
+            <button class="btn-danger btn-sm" onclick="window.disconnectEbayUser()">Disconnect</button>
+          </div>`
+        : `<div style="display:flex;flex-direction:column;gap:8px;max-width:480px">
+            <button class="btn-secondary" onclick="window.connectEbayAccount()" ${!(state.ebayKey && state.ebaySecret && state.ebayRuName) ? 'disabled title="Save App ID, Client Secret, and RuName first"' : ''}>
+              Connect eBay Account
+            </button>
+            ${!(state.ebayKey && state.ebaySecret && state.ebayRuName)
+              ? `<div style="font-size:11px;color:var(--amber)">Save your App ID, Client Secret, and RuName above first.</div>`
+              : `<div style="font-size:11px;color:var(--text-muted)">You'll be redirected to eBay to authorise.</div>`
+            }
+          </div>`
+      }
     </div>
 
     <div class="settings-group">
@@ -41,7 +99,7 @@ export function renderSettings() {
     <div class="settings-group">
       <h3>AI scoring</h3>
       <p>
-        Claude/Anthropic scoring is disabled for this Vercel build. Listings are scored with your deal history + category rules only.
+        Listings are scored with your deal history + category rules. Use the <strong>Diagnostic</strong> tab to teach the engine your preferences.
       </p>
     </div>
 
@@ -58,12 +116,32 @@ export function renderSettings() {
 }
 
 export function saveEbayKey() {
-  state.notify = { type: 'info', msg: 'Set EBAY_APP_ID in Vercel Environment Variables (server-side).' };
+  const keyInput    = document.getElementById('ebay-key-input');
+  const secretInput = document.getElementById('ebay-secret-input');
+  const ruNameInput = document.getElementById('ebay-runame-input');
+  const key    = (keyInput    ? keyInput.value    : state.ebayKey).trim();
+  const secret = (secretInput ? secretInput.value : state.ebaySecret).trim();
+  const ruName = (ruNameInput ? ruNameInput.value : state.ebayRuName).trim();
+
+  if (!key && !secret) {
+    state.notify = { type: 'err', msg: 'Paste your eBay App ID and Client Secret before saving.' };
+    window.renderApp();
+    return;
+  }
+  if (key)    state.ebayKey    = key;
+  if (secret) state.ebaySecret = secret;
+  if (ruName) state.ebayRuName = ruName;
+  persistSettings();
+  state.notify = { type: 'ok', msg: 'eBay credentials saved.' };
   window.renderApp();
 }
 
 export function clearEbayKey() {
-  state.notify = { type: 'info', msg: 'eBay key is configured server-side on Vercel (EBAY_APP_ID).' };
+  state.ebayKey    = '';
+  state.ebaySecret = '';
+  state.ebayRuName = '';
+  persistSettings();
+  state.notify = { type: 'info', msg: 'eBay credentials cleared.' };
   window.renderApp();
 }
 

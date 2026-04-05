@@ -1,5 +1,38 @@
 import { NextResponse } from 'next/server';
 
+// Simple in-memory token cache (survives within a single serverless instance)
+let tokenCache = { token: null, expiresAt: 0 };
+
+async function getAccessToken(appId, clientSecret) {
+  const now = Date.now();
+  if (tokenCache.token && now < tokenCache.expiresAt - 60_000) {
+    return tokenCache.token;
+  }
+
+  const credentials = Buffer.from(`${appId}:${clientSecret}`).toString('base64');
+  const resp = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${credentials}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: 'grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope',
+    cache: 'no-store',
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`eBay OAuth failed (${resp.status}): ${text}`);
+  }
+
+  const data = await resp.json();
+  tokenCache = {
+    token: data.access_token,
+    expiresAt: now + (data.expires_in * 1000),
+  };
+  return tokenCache.token;
+}
+
 function extractGrade(title) {
   const t = String(title || '').toUpperCase();
   if (t.includes('PSA 10')) return 'PSA 10';
@@ -27,24 +60,28 @@ function estimateAesthetic(title, condition) {
   if (t.includes('CRACKED ICE')) score += 0.8;
   if (t.includes('HYPER'))       score += 1.0;
   if (t.includes('RC') || t.includes('ROOKIE')) score += 0.5;
-  if (condition === 'Brand New' || condition === 'Like New') score += 0.5;
+  if (condition && (condition.toLowerCase().includes('new') || condition.toLowerCase().includes('mint'))) score += 0.5;
   return Math.min(10, Math.round(score * 10) / 10);
 }
 
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
-  const q = (searchParams.get('q') || '').trim();
-  const category = (searchParams.get('category') || '').trim();
+  const q            = (searchParams.get('q') || '').trim();
+  const category     = (searchParams.get('category') || '').trim();
+  const listingType  = searchParams.get('listingType') || '';
+  const itemLocation = searchParams.get('itemLocation') || '';
 
-  const ebayAppId = process.env.EBAY_APP_ID;
-  if (!ebayAppId) {
+  const ebayAppId     = req.headers.get('x-ebay-key')    || process.env.EBAY_APP_ID;
+  const ebaySecret    = req.headers.get('x-ebay-secret')  || process.env.EBAY_CLIENT_SECRET;
+
+  if (!ebayAppId || !ebaySecret) {
     return NextResponse.json(
-      { error: 'Server missing EBAY_APP_ID env var.' },
+      { error: 'eBay App ID and Client Secret are both required. Add them in Settings.' },
       { status: 500 }
     );
   }
 
-  const keywords = [q, 'basketball card', category !== '' ? category : '']
+  const keywords = [q, category !== '' ? category : '']
     .filter(Boolean)
     .join(' ');
 
@@ -52,64 +89,89 @@ export async function GET(req) {
     return NextResponse.json({ items: [] }, { status: 200 });
   }
 
-  const params = new URLSearchParams({
-    'OPERATION-NAME': 'findItemsByKeywords',
-    'SERVICE-VERSION': '1.0.3',
-    'SECURITY-APPNAME': ebayAppId,
-    'RESPONSE-DATA-FORMAT': 'JSON',
-    'REST-PAYLOAD': '',
-    'keywords': keywords,
-    'paginationInput.entriesPerPage': '20',
-    'itemFilter(0).name': 'Condition',
-    'itemFilter(0).value(0)': '1000',
-    'itemFilter(0).value(1)': '2000',
-    'itemFilter(0).value(2)': '2500',
-    'itemFilter(0).value(3)': '3000',
-    'sortOrder': 'BestMatch',
-  });
-
-  const url = `https://svcs.ebay.com/services/search/FindingService/v1?${params.toString()}`;
-
-  const resp = await fetch(url, {
-    headers: {
-      // eBay sometimes varies responses; disabling cache avoids confusing results.
-      'cache-control': 'no-store',
-    },
-    cache: 'no-store',
-  });
-
-  if (!resp.ok) {
+  let accessToken;
+  try {
+    accessToken = await getAccessToken(ebayAppId, ebaySecret);
+  } catch (e) {
     return NextResponse.json(
-      { error: `eBay API error: ${resp.status}` },
+      { error: `eBay auth failed: ${e.message}. Check your App ID and Client Secret.` },
       { status: 502 }
     );
   }
 
-  const data = await resp.json();
-  const items = data?.findItemsByKeywordsResponse?.[0]?.searchResult?.[0]?.item || [];
+  const maxItems = parseInt(searchParams.get('max') || '0', 10);
+  const PAGE_SIZE = 200;
+  const ebayHeaders = {
+    'Authorization': `Bearer ${accessToken}`,
+    'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+    'Content-Type': 'application/json',
+  };
 
-  const normalized = items.map((item) => {
-    const title     = item.title?.[0] || '';
-    const price     = parseFloat(item.sellingStatus?.[0]?.currentPrice?.[0]?.__value__ || 0);
-    const imgUrl    = item.galleryURL?.[0] || '';
-    const itemId    = item.itemId?.[0] || '';
-    const viewUrl   = item.viewItemURL?.[0] || '';
-    const condition = item.condition?.[0]?.conditionDisplayName?.[0] || 'Unknown';
-    const grade     = extractGrade(title);
-    const aestheticScore = estimateAesthetic(title, condition);
-    return {
-      title,
-      price,
-      imgUrl,
-      itemId,
-      viewUrl,
-      condition,
-      grade,
-      aestheticScore,
-      avgSold: price * 1.35,
-    };
-  });
+  const allItems = [];
+  let offset = 0;
+  let total = null;
+
+  do {
+    const filters = [];
+    if (listingType === 'fixed')   filters.push('buyingOptions:{FIXED_PRICE}');
+    if (listingType === 'auction') filters.push('buyingOptions:{AUCTION}');
+    if (itemLocation === 'us')     filters.push('itemLocationCountry:US');
+
+    const browseParams = new URLSearchParams({
+      q: keywords,
+      limit: String(maxItems > 0 ? Math.min(PAGE_SIZE, maxItems) : PAGE_SIZE),
+      offset: String(offset),
+      sort: 'bestMatch',
+      category_ids: '212',
+    });
+    if (filters.length) browseParams.set('filter', filters.join(','));
+
+    const resp = await fetch(
+      `https://api.ebay.com/buy/browse/v1/item_summary/search?${browseParams.toString()}`,
+      { headers: ebayHeaders, cache: 'no-store' }
+    );
+
+    if (!resp.ok) {
+      const text = await resp.text();
+      return NextResponse.json(
+        { error: `eBay Browse API error (${resp.status}): ${text.slice(0, 200)}` },
+        { status: 502 }
+      );
+    }
+
+    const data = await resp.json();
+    const page = data?.itemSummaries || [];
+    allItems.push(...page);
+
+    if (total === null) total = data?.total ?? 0;
+    offset += PAGE_SIZE;
+  } while (offset < total && allItems.length < total && (maxItems === 0 || allItems.length < maxItems));
+
+  const items = allItems;
+
+  const now24h = Date.now() + 24 * 60 * 60 * 1000;
+  const isAuctionFilter = listingType === 'auction';
+
+  const normalized = items
+    .map((item) => {
+      const title        = item.title || '';
+      const price        = parseFloat(item.currentBidPrice?.value || item.price?.value || 0);
+      const imgUrl       = item.image?.imageUrl || (item.thumbnailImages?.[0]?.imageUrl) || '';
+      const itemId       = item.itemId || '';
+      const viewUrl      = item.itemWebUrl || '';
+      const condition    = item.condition || 'Unknown';
+      const grade        = extractGrade(title);
+      const aestheticScore = estimateAesthetic(title, condition);
+      const endTime      = item.itemEndDate || null;   // ISO string, auctions only
+      const buyingOption = (item.buyingOptions || []).includes('AUCTION') ? 'AUCTION' : 'FIXED_PRICE';
+      return { title, price, imgUrl, itemId, viewUrl, condition, grade, aestheticScore, avgSold: price * 1.35, endTime, buyingOption };
+    })
+    // When searching auctions, only show listings ending within 24 hours
+    .filter(item => {
+      if (!isAuctionFilter) return true;
+      if (!item.endTime) return true; // no end time = include (BIN or unknown)
+      return new Date(item.endTime).getTime() <= now24h;
+    });
 
   return NextResponse.json({ items: normalized }, { status: 200 });
 }
-

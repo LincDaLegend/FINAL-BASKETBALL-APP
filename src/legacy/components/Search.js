@@ -1,34 +1,47 @@
 import { state } from '../utils/state.js';
-import { searchEbay, ruleMLScore, scoreVerdict, toPhp } from '../utils/api.js';
-import { CATEGORIES, CAT_BADGE_CLASS } from '../utils/constants.js';
+import { searchEbay, ruleMLScore, scoreVerdict, toPhp, getPlayerCategory } from '../utils/api.js';
+import { extractFeatures, topFeatures } from '../utils/ml.js';
+import { CAT_BADGE_CLASS, CAT_LABEL } from '../utils/constants.js';
 
 export function renderSearch() {
   return `
     <div class="page-title">Search Listings</div>
-    <div class="page-subtitle">Live eBay search (via server proxy) · Scored using your deal history</div>
+    <div class="page-subtitle">Live eBay search · Scored using your deal history</div>
 
     <div class="search-area">
-      <div class="search-row">
+      <div class="search-row" style="margin-bottom:10px">
         <input
           id="q-input"
           type="text"
-          placeholder="Player name  (e.g. LeBron James, Ja Morant...)"
+          placeholder="Player name  (e.g. LeBron James, Jordan Clarkson...)"
           value="${escHtml(state.query)}"
-          style="flex:3;min-width:180px"
+          style="flex:1;min-width:180px"
           onkeydown="if(event.key==='Enter') window.doSearch()"
         />
-        <select id="cat-input" style="flex:1;min-width:140px">
-          <option value="">All categories</option>
-          ${CATEGORIES.map(c => `<option value="${c}" ${state.category === c ? 'selected' : ''}>${capFirst(c)}</option>`).join('')}
-        </select>
         <button class="btn-search" onclick="window.doSearch()" ${state.loading ? 'disabled' : ''}>
           ${state.loading ? '<span>Searching…</span>' : '<span>Search eBay</span>'}
         </button>
       </div>
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:space-between">
+        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+          <div style="display:flex;gap:4px;align-items:center">
+            <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-right:4px">Type</span>
+            ${[['all','All'],['fixed','Buy It Now'],['auction','Auction']].map(([v,l]) => `
+              <button class="pill ${state.listingType === v ? 'active' : ''}" onclick="window.setListingType('${v}')">${l}</button>
+            `).join('')}
+          </div>
+          <div style="display:flex;gap:4px;align-items:center">
+            <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-right:4px">Location</span>
+            ${[['us','US only'],['all','Worldwide']].map(([v,l]) => `
+              <button class="pill ${state.itemLocation === v ? 'active' : ''}" onclick="window.setItemLocation('${v}')">${l}</button>
+            `).join('')}
+          </div>
+        </div>
+      </div>
     </div>
 
     ${state.notify ? renderNotify(state.notify) : ''}
-    ${renderNotify({ type: 'info', msg: 'To enable search on Vercel: set EBAY_APP_ID in your Vercel Project → Settings → Environment Variables.' })}
+    ${!state.ebayKey && !state.notify ? renderNotify({ type: 'info', msg: 'Add your eBay API key in Settings to enable search.' }) : ''}
 
     ${state.results.length > 0 ? `
       <div class="pill-row">
@@ -40,23 +53,32 @@ export function renderSearch() {
       </div>
     ` : ''}
 
-    ${state.loading ? `
-      <div class="loading-state">
-        <div>Searching eBay…</div>
-        <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
-      </div>
-    ` : ''}
+    <div>
+      ${state.loading ? `
+        <div class="loading-state">
+          <div>Searching eBay…</div>
+          <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+        </div>
+      ` : ''}
 
-    ${!state.loading && state.results.length === 0 && !state.query ? `
-      <div class="empty-state">
-        <div class="empty-icon">🏀</div>
-        <h3>Ready to source</h3>
-        <p>Enter a player name above to pull live eBay listings.<br/>Listings are scored using your deal history and category rules.</p>
-      </div>
-    ` : ''}
+      ${!state.loading && state.results.length === 0 && !state.query ? renderSuggestionsPanel() : ''}
 
-    ${renderResults()}
+      ${renderResults()}
+    </div>
   `;
+}
+
+function timeLeft(endTime) {
+  if (!endTime) return null;
+  const ms = new Date(endTime) - Date.now();
+  if (ms <= 0) return 'Ended';
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  const s = Math.floor((ms % 60000) / 1000);
+  if (h >= 24) return `${Math.floor(h / 24)}d ${h % 24}h`;
+  if (h >= 1)  return `${h}h ${m}m`;
+  if (m >= 1)  return `${m}m ${s}s`;
+  return `${s}s`;
 }
 
 function renderResults() {
@@ -75,6 +97,11 @@ function renderResults() {
     const scoreLetterCls = score >= 70 ? 'score-A' : score >= 45 ? 'score-B' : 'score-C';
     const scaledScore = score >= 70 ? 'A' : score >= 45 ? 'B' : 'C';
     const phpPrice = toPhp(r.price, state.phpRate);
+    const isAuction = r.buyingOption === 'AUCTION';
+    const tLeft = isAuction ? timeLeft(r.endTime) : null;
+    // Urgency colour: red if < 1h, amber if < 4h, otherwise neutral
+    const tLeftMs = r.endTime ? new Date(r.endTime) - Date.now() : Infinity;
+    const tCls = tLeftMs < 3600000 ? 'badge-skip' : tLeftMs < 14400000 ? 'badge-consider' : 'badge-gray';
 
     return `
       <div class="listing-card">
@@ -86,12 +113,25 @@ function renderResults() {
           <div class="listing-title">${escHtml(r.title)}</div>
           <div class="listing-sub">${escHtml(r.condition)} · ${r.grade}</div>
 
+          ${(() => {
+            const pCat = getPlayerCategory(r.title, state.playerCategories);
+            const pCatBadge = pCat ? `<span class="badge ${CAT_BADGE_CLASS[pCat] || 'badge-gray'}">${CAT_LABEL[pCat] || pCat}</span>` : '';
+            return `
           <div class="listing-badges">
             <span class="badge ${vCls}">${verdict}</span>
             <span class="badge badge-blue">${r.grade}</span>
-            ${state.category ? `<span class="badge ${CAT_BADGE_CLASS[state.category] || 'badge-gray'}">${state.category}</span>` : ''}
+            ${pCatBadge}
+            ${isAuction ? `<span class="badge badge-gray">Auction</span>` : ''}
+            ${tLeft ? `<span class="badge ${tCls}">⏱ ${tLeft}</span>` : ''}
             <span class="badge badge-pink">aesthetic ${r.aestheticScore}/10</span>
-          </div>
+          </div>`;
+          })()}
+
+          ${state.mlFeatureWeights && r.aiScore >= 45 ? (() => {
+            const player  = (r.title || '').split(/\s+/).slice(0, 3).join(' ');
+            const reasons = topFeatures(extractFeatures(r), state.mlFeatureWeights, 3, player);
+            return reasons.length ? `<div class="listing-ai-reason">Matches your taste: ${reasons.join(' · ')}</div>` : '';
+          })() : ''}
 
           <div class="score-bar-wrap">
             <div class="score-bar-meta">
@@ -103,7 +143,14 @@ function renderResults() {
             </div>
           </div>
 
-          ${r.viewUrl ? `<a class="ebay-link" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener">view on eBay →</a>` : ''}
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+            ${r.viewUrl && isAuction
+              ? `<button class="btn-primary btn-sm" onclick="window.openBidPopup(${JSON.stringify(r.viewUrl)})">Bid Now</button>`
+              : ''}
+            ${r.viewUrl
+              ? `<a class="ebay-link" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener">view on eBay →</a>`
+              : ''}
+          </div>
         </div>
 
         <div class="listing-price">
@@ -116,24 +163,81 @@ function renderResults() {
   }).join('');
 }
 
-export async function doSearch() {
-  state.query    = document.getElementById('q-input')?.value?.trim() || '';
-  state.category = document.getElementById('cat-input')?.value || '';
-  state.notify   = null;
+function renderSuggestionsPanel() {
+  const suggestions = state.suggestedSearches || [];
+  const loading     = state.suggestLoading;
+  const trendNote   = state.suggestTrendNote || '';
 
-  if (!state.query && !state.category) {
-    state.notify = { type: 'err', msg: 'Enter a player name or pick a category first.' };
+  const TYPE_BADGE = {
+    'repeat-winner': 'badge-buy',
+    'grade-up':      'badge-consider',
+    'price-adjust':  'badge-blue',
+    'avoid-pattern': 'badge-pink',
+  };
+
+  return `
+    <div class="suggest-panel">
+      <div class="suggest-header">
+        <div>
+          <div class="suggest-title">What should I search?</div>
+          ${trendNote ? `<div class="suggest-trend">${escHtml(trendNote)}</div>` : ''}
+        </div>
+        <button class="btn-ghost btn-sm" onclick="window.fetchSuggestions()" ${loading ? 'disabled' : ''}>
+          ${loading
+            ? `<span class="dots" style="display:inline-flex;gap:3px"><div class="dot"></div><div class="dot"></div><div class="dot"></div></span>`
+            : suggestions.length ? 'Refresh' : 'Get AI suggestions'}
+        </button>
+      </div>
+
+      ${suggestions.length === 0 && !loading ? `
+        <div style="font-size:12px;color:var(--text-muted);padding:8px 0">
+          Click "Get AI suggestions" — Claude will analyse your deal history and current market trends to recommend what to source next.
+        </div>
+      ` : ''}
+
+      ${suggestions.length > 0 ? `
+        <div class="suggest-grid">
+          ${suggestions.map(s => `
+            <div class="suggest-card" onclick="window.runSuggestedSearch(${JSON.stringify(s.query)})">
+              <div class="suggest-card-top">
+                <span class="suggest-label">${escHtml(s.label)}</span>
+                <span class="badge ${TYPE_BADGE[s.type] || 'badge-gray'}">${escHtml(s.type || '')}</span>
+              </div>
+              <div class="suggest-reason">${escHtml(s.reason || '')}</div>
+              ${s.maxBuyPrice ? `<div class="suggest-max-buy">max buy: <strong>$${s.maxBuyPrice}</strong></div>` : ''}
+              <div class="suggest-query">${escHtml(s.query)}</div>
+            </div>
+          `).join('')}
+        </div>
+      ` : ''}
+    </div>
+
+    <div class="empty-state" style="padding-top:1rem">
+      <div class="empty-icon">🏀</div>
+      <h3>Ready to source</h3>
+      <p>Enter a player name above, or use an AI suggestion to pull live eBay listings.</p>
+    </div>
+  `;
+}
+
+
+export async function doSearch() {
+  state.query  = document.getElementById('q-input')?.value?.trim() || '';
+  state.notify = null;
+
+  if (!state.query) {
+    state.notify = { type: 'err', msg: 'Enter a player name to search.' };
     window.renderApp();
     return;
   }
 
-  state.loading = true;
-  state.results = [];
+  state.loading       = true;
+  state.results       = [];
   state.verdictFilter = '';
   window.renderApp();
 
   try {
-    const listings = await searchEbay(state.query, state.category);
+    const listings = await searchEbay(state.query, '', state.listingType, state.itemLocation);
 
     if (!listings.length) {
       state.loading = false;
@@ -142,7 +246,7 @@ export async function doSearch() {
       return;
     }
 
-    listings.forEach(l => { l.aiScore = ruleMLScore(l, state.category, state.rules, state.deals); });
+    listings.forEach(l => { l.aiScore = ruleMLScore(l, null, state.rules, state.deals, state.mlFeatureWeights); });
     state.results = [...listings].sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));
     state.loading = false;
     window.renderApp();
@@ -157,10 +261,8 @@ function escHtml(str) {
   return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
-function capFirst(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
 function renderNotify({ type, msg }) {
   const cls = type === 'ok' ? 'notify-ok' : type === 'info' ? 'notify-info' : 'notify-err';
   return `<div class="notify ${cls}">${msg}</div>`;
 }
-
