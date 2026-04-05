@@ -21,11 +21,15 @@ export async function GET(req) {
     'https://api.ebay.com/oauth/api_scope/commerce.identity.readonly',
   ];
 
+  // Encode credentials in the state param so callback can read them without relying on cookies
+  const statePayload = Buffer.from(JSON.stringify({ clientId, clientSecret, ruName })).toString('base64url');
+
   const params = new URLSearchParams({
     client_id:     clientId,
     redirect_uri:  ruName,
     response_type: 'code',
     scope:         scopes.join(' '),
+    state:         statePayload,
   });
 
   const url = `https://auth.ebay.com/oauth2/authorize?${params}`;
@@ -35,12 +39,5 @@ export async function GET(req) {
     return NextResponse.json({ url, clientId, ruName, scopes });
   }
 
-  const response = NextResponse.redirect(url);
-
-  const cookieOpts = { httpOnly: true, secure: process.env.NODE_ENV === 'production', maxAge: 300, sameSite: 'lax', path: '/' };
-  if (clientId)     response.cookies.set('ebay_id', clientId,     cookieOpts);
-  if (clientSecret) response.cookies.set('ebay_cs', clientSecret, cookieOpts);
-  if (ruName)       response.cookies.set('ebay_ru', ruName,       cookieOpts);
-
-  return response;
+  return NextResponse.redirect(url);
 }

@@ -11,10 +11,19 @@ export async function GET(req) {
     return NextResponse.redirect(`${appBase}/?ebay_error=${encodeURIComponent(error || 'no_code')}`);
   }
 
-  const clientId     = process.env.EBAY_APP_ID        || req.cookies.get('ebay_id')?.value;
-  const clientSecret = process.env.EBAY_CLIENT_SECRET || req.cookies.get('ebay_cs')?.value;
-  // redirect_uri in token exchange must be the RuName, same as used in the auth request
-  const redirectUri  = process.env.EBAY_REDIRECT_URI  || req.cookies.get('ebay_ru')?.value;
+  // Decode credentials from state param (set by auth route)
+  let clientId, clientSecret, redirectUri;
+  try {
+    const raw = searchParams.get('state') || '';
+    const decoded = JSON.parse(Buffer.from(raw, 'base64url').toString());
+    clientId     = decoded.clientId;
+    clientSecret = decoded.clientSecret;
+    redirectUri  = decoded.ruName;
+  } catch {
+    clientId     = process.env.EBAY_APP_ID;
+    clientSecret = process.env.EBAY_CLIENT_SECRET;
+    redirectUri  = process.env.EBAY_REDIRECT_URI;
+  }
 
   try {
     // Exchange auth code for user access token
@@ -55,9 +64,6 @@ export async function GET(req) {
     const successResp = NextResponse.redirect(
       `${appBase}/?ebay_user=${encodeURIComponent(username)}`
     );
-    successResp.cookies.delete('ebay_id');
-    successResp.cookies.delete('ebay_cs');
-    successResp.cookies.delete('ebay_ru');
     return successResp;
   } catch (e) {
     return NextResponse.redirect(
