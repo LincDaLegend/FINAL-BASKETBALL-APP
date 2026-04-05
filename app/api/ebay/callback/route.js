@@ -43,7 +43,7 @@ export async function GET(req) {
 
     if (!tokenResp.ok) {
       const text = await tokenResp.text();
-      throw new Error(`Token exchange failed: ${text.slice(0, 100)}`);
+      throw new Error(`Token exchange failed: ${text.slice(0, 200)} | id=${clientId?.slice(0,10)} ru=${redirectUri?.slice(0,20)} cs=${clientSecret ? 'present' : 'MISSING'}`);
     }
 
     const tokenData = await tokenResp.json();
