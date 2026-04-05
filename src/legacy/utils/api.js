@@ -1,11 +1,6 @@
 import { EBAY_FINDING_API, PHP_RATE, DEFAULT_SET_RARITY_TIERS } from './constants.js';
 import { state } from './state.js';
 import { extractFeatures, mlScore, DEFAULT_WEIGHTS } from './ml.js';
-// predictScore loaded dynamically to avoid bundling TF.js into the critical path
-let _predictScore = null;
-if (typeof window !== 'undefined') {
-  import('./tfModel.js').then(m => { _predictScore = m.predictScore; }).catch(() => {});
-}
 import { listingEmbScore } from './embedding.js';
 
 // ── Set / card rarity scoring ─────────────────────────────────────────────────
@@ -194,9 +189,8 @@ export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
   const featureScore  = mlScore(features, weights, listingPlayer) / 100; // 0–1
 
   // Neural network score (TF.js) — used when model has been trained on ≥3 deals
-  const tfScore = (state.tfModelReady && state.tfModel && _predictScore)
-    ? _predictScore(state.tfModel, listing, 500) / 100
-    : null;
+  // TF.js neural score — only active after user has trained model (skipped on fresh install)
+  const tfScore = null;
 
   // Semantic embedding score — how similar is this listing to your past winners?
   const embRaw  = listingEmbScore(listing.title, state.embModel); // 0–1 or null

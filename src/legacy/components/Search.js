@@ -145,7 +145,7 @@ function renderResults() {
 
           <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
             ${r.viewUrl && isAuction
-              ? `<button class="btn-primary btn-sm" onclick="window.openBidPopup(${JSON.stringify(r.viewUrl)})">Bid Now</button>`
+              ? `<a class="btn-primary btn-sm" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener">Bid Now</a>`
               : ''}
             ${r.viewUrl
               ? `<a class="ebay-link" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener">view on eBay →</a>`
