@@ -96,7 +96,8 @@ function renderResults() {
     const barColor = score >= 70 ? '#3ecf8e' : score >= 45 ? '#f5a623' : '#f04444';
     const scoreLetterCls = score >= 70 ? 'score-A' : score >= 45 ? 'score-B' : 'score-C';
     const scaledScore = score >= 70 ? 'A' : score >= 45 ? 'B' : 'C';
-    const phpPrice = toPhp(r.price, state.phpRate);
+    const totalPrice = r.price + (r.shippingCost || 0);
+    const phpPrice = toPhp(totalPrice, state.phpRate);
     const isAuction = r.buyingOption === 'AUCTION' || r.buyingOption === 'AUCTION_WITH_BIN';
     const tLeft = isAuction ? timeLeft(r.endTime) : null;
     // Urgency colour: red if < 1h, amber if < 4h, otherwise neutral
@@ -123,6 +124,7 @@ function renderResults() {
             ${pCatBadge}
             ${isAuction ? `<span class="badge badge-gray">Auction</span>` : ''}
             ${tLeft ? `<span class="badge ${tCls}">⏱ ${tLeft}</span>` : ''}
+            ${r.sellerGoodCount > 1 ? `<span class="badge badge-buy" title="This seller has ${r.sellerGoodCount} favorable listings in these results">🏪 ${r.sellerGoodCount} good items</span>` : ''}
             <span class="badge badge-pink">aesthetic ${r.aestheticScore}/10</span>
           </div>`;
           })()}
@@ -155,7 +157,10 @@ function renderResults() {
 
         <div class="listing-price">
           <div class="score-ring ${scoreLetterCls}">${scaledScore}</div>
-          <div class="price-usd" style="margin-top:8px">$${r.price.toFixed(2)}</div>
+          <div class="price-usd" style="margin-top:8px">$${totalPrice.toFixed(2)}</div>
+          ${r.shippingCost > 0
+            ? `<div style="font-size:10px;color:var(--text-muted)">$${r.price.toFixed(2)} + $${r.shippingCost.toFixed(2)} ship</div>`
+            : `<div style="font-size:10px;color:var(--green)">free shipping</div>`}
           <div class="price-php">${phpPrice}</div>
         </div>
       </div>
@@ -249,12 +254,26 @@ export async function doSearch() {
     listings.forEach(l => {
       try {
         l.aiScore = ruleMLScore(l, null, state.rules, state.deals, state.mlFeatureWeights);
-        if (!Number.isFinite(l.aiScore)) l.aiScore = 30; // fallback if NaN/Infinity
+        if (!Number.isFinite(l.aiScore)) l.aiScore = 30;
       } catch (err) {
         console.error('Score error:', err, l);
         l.aiScore = 30;
       }
     });
+
+    // Seller quality boost — sellers with multiple good listings get a small score lift
+    const sellerScores = {};
+    listings.forEach(l => {
+      if (l.sellerId && l.aiScore >= 45) {
+        sellerScores[l.sellerId] = (sellerScores[l.sellerId] || 0) + 1;
+      }
+    });
+    listings.forEach(l => {
+      const goodCount = sellerScores[l.sellerId] || 0;
+      l.sellerGoodCount = goodCount > 1 ? goodCount : 0;
+      if (goodCount > 1) l.aiScore = Math.min(100, l.aiScore + Math.min(8, goodCount * 2));
+    });
+
     state.results = [...listings].sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));
     state.loading = false;
     window.renderApp();

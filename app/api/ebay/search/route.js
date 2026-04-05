@@ -100,7 +100,7 @@ export async function GET(req) {
   }
 
   const maxItems = parseInt(searchParams.get('max') || '0', 10);
-  const PAGE_SIZE = 200;
+  const PAGE_SIZE = 25; // cap per page — keeps response fast
   const ebayHeaders = {
     'Authorization': `Bearer ${accessToken}`,
     'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
@@ -112,7 +112,7 @@ export async function GET(req) {
   let total = null;
 
   do {
-    const filters = [];
+    const filters = ['conditionIds:{1000|1500|2000|2500|3000}'];
     if (listingType === 'fixed')   filters.push('buyingOptions:{FIXED_PRICE}');
     if (listingType === 'auction') filters.push('buyingOptions:{AUCTION}');
     if (itemLocation === 'us')     filters.push('itemLocationCountry:US');
@@ -145,7 +145,7 @@ export async function GET(req) {
 
     if (total === null) total = data?.total ?? 0;
     offset += PAGE_SIZE;
-  } while (offset < total && allItems.length < total && (maxItems === 0 || allItems.length < maxItems));
+  } while (false); // single page only — keeps latency low
 
   const items = allItems;
 
@@ -162,9 +162,17 @@ export async function GET(req) {
       const condition    = item.condition || 'Unknown';
       const grade        = extractGrade(title);
       const aestheticScore = estimateAesthetic(title, condition);
-      const endTime      = item.itemEndDate || null;   // ISO string, auctions only
+      const endTime      = item.itemEndDate || null;
       const buyingOption = (item.buyingOptions || []).includes('AUCTION') ? 'AUCTION' : 'FIXED_PRICE';
-      return { title, price, imgUrl, itemId, viewUrl, condition, grade, aestheticScore, avgSold: price * 1.35, endTime, buyingOption };
+      const sellerId     = item.seller?.username || '';
+      const sellerFeedback = Math.round(parseFloat(item.seller?.feedbackPercentage || '100'));
+      const shippingCost = (() => {
+        const opt = (item.shippingOptions || [])[0];
+        if (!opt) return 0;
+        if (opt.shippingCostType === 'FREE') return 0;
+        return parseFloat(opt.shippingCost?.value || '0');
+      })();
+      return { title, price, imgUrl, itemId, viewUrl, condition, grade, aestheticScore, avgSold: price * 1.35, endTime, buyingOption, sellerId, sellerFeedback, shippingCost };
     })
     // When searching auctions, only show listings ending within 24 hours
     .filter(item => {
