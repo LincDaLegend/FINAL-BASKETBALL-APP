@@ -154,15 +154,20 @@ export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
       suitability = isValuable ? 0.78 : 0.12;
       break;
     case 'ph-specific': {
-      // Filipino blood — mid autos/GUs are gold; low end is a trap
-      // Exception: Dylan Harper rookies still get some local hype
+      // Filipino blood — autos/GUs are gold; premium sets still move; plain low end is a trap
       const isDylanHarper = listing.title.toUpperCase().includes('DYLAN HARPER');
       if (hasPremium) {
-        suitability = 1.05;
+        suitability = 1.05;                   // auto/patch/logoman — top tier
+      } else if (isPremiumSet) {
+        suitability = 0.82;                   // Flawless/NT/Obsidian base — collector demand in PH
+      } else if (hasTopGrade) {
+        suitability = 0.72;                   // PSA 10 / BGS 10 — graded premium
       } else if (isDylanHarper && features.rookie) {
         suitability = 0.72;
+      } else if (hasMidGrade) {
+        suitability = 0.55;                   // PSA 9 — solid but not a must-buy
       } else {
-        suitability = 0.35;
+        suitability = 0.35;                   // plain base/parallel — usually a trap
       }
       break;
     }
