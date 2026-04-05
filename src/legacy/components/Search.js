@@ -124,8 +124,7 @@ function renderResults() {
             ${pCatBadge}
             ${isAuction ? `<span class="badge badge-gray">Auction</span>` : ''}
             ${tLeft ? `<span class="badge ${tCls}">⏱ ${tLeft}</span>` : ''}
-            ${r.sellerGoodCount > 1 ? `<span class="badge badge-buy" title="This seller has ${r.sellerGoodCount} favorable listings in these results">🏪 ${r.sellerGoodCount} good items</span>` : ''}
-            <span class="badge badge-pink">aesthetic ${r.aestheticScore}/10</span>
+<span class="badge badge-pink">aesthetic ${r.aestheticScore}/10</span>
           </div>`;
           })()}
 
@@ -146,9 +145,22 @@ function renderResults() {
           </div>
 
           <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-            ${r.viewUrl && isAuction
-              ? `<a class="btn-primary btn-sm" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener">Bid Now</a>`
-              : ''}
+            ${r.viewUrl && isAuction && state.ebayToken
+              ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                  <input
+                    id="bid-${r.itemId}"
+                    type="number"
+                    min="${r.price + 0.01}"
+                    step="0.50"
+                    placeholder="Max bid $"
+                    style="width:100px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px"
+                  />
+                  <button class="btn-primary btn-sm" onclick="window.placeBid('${r.itemId}', '${escHtml(r.title)}')">Place Bid</button>
+                  <a style="font-size:11px;color:var(--accent)" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener">view ↗</a>
+                </div>`
+              : r.viewUrl && isAuction
+                ? `<a class="btn-primary btn-sm" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener">Bid Now</a>`
+                : ''}
             ${r.viewUrl
               ? `<a class="ebay-link" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener">view on eBay →</a>`
               : ''}
@@ -259,19 +271,6 @@ export async function doSearch() {
         console.error('Score error:', err, l);
         l.aiScore = 30;
       }
-    });
-
-    // Seller quality boost — sellers with multiple good listings get a small score lift
-    const sellerScores = {};
-    listings.forEach(l => {
-      if (l.sellerId && l.aiScore >= 45) {
-        sellerScores[l.sellerId] = (sellerScores[l.sellerId] || 0) + 1;
-      }
-    });
-    listings.forEach(l => {
-      const goodCount = sellerScores[l.sellerId] || 0;
-      l.sellerGoodCount = goodCount > 1 ? goodCount : 0;
-      if (goodCount > 1) l.aiScore = Math.min(100, l.aiScore + Math.min(8, goodCount * 2));
     });
 
     state.results = [...listings].sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));

@@ -60,11 +60,14 @@ export async function GET(req) {
       username = identity.username || identity.userId || 'eBay User';
     }
 
-    // Redirect back to app — frontend reads params and stores in localStorage
-    const successResp = NextResponse.redirect(
-      `${appBase}/?ebay_user=${encodeURIComponent(username)}`
-    );
-    return successResp;
+    // Pass token + username back to app via URL — stored in localStorage client-side
+    const params = new URLSearchParams({
+      ebay_user:  username,
+      ebay_token: tokenData.access_token,
+      ebay_token_exp: String(Date.now() + (tokenData.expires_in || 7200) * 1000),
+    });
+    if (tokenData.refresh_token) params.set('ebay_refresh', tokenData.refresh_token);
+    return NextResponse.redirect(`${appBase}/?${params}`);
   } catch (e) {
     return NextResponse.redirect(
       `${appBase}/?ebay_error=${encodeURIComponent(e.message)}`

@@ -100,7 +100,7 @@ export async function GET(req) {
   }
 
   const maxItems = parseInt(searchParams.get('max') || '0', 10);
-  const PAGE_SIZE = 25; // cap per page — keeps response fast
+  const PAGE_SIZE = 200;
   const ebayHeaders = {
     'Authorization': `Bearer ${accessToken}`,
     'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
@@ -112,7 +112,7 @@ export async function GET(req) {
   let total = null;
 
   do {
-    const filters = ['conditionIds:{1000|1500|2000|2500|3000}'];
+    const filters = [];
     if (listingType === 'fixed')   filters.push('buyingOptions:{FIXED_PRICE}');
     if (listingType === 'auction') filters.push('buyingOptions:{AUCTION}');
     if (itemLocation === 'us')     filters.push('itemLocationCountry:US');
@@ -145,7 +145,7 @@ export async function GET(req) {
 
     if (total === null) total = data?.total ?? 0;
     offset += PAGE_SIZE;
-  } while (false); // single page only — keeps latency low
+  } while (offset < total && allItems.length < total && (maxItems === 0 || allItems.length < maxItems));
 
   const items = allItems;
 

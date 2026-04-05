@@ -7,8 +7,11 @@ export const state = {
   // Settings
   ebayKey:    load('ebayKey', ''),
   ebaySecret: load('ebaySecret', ''),
-  ebayRuName: load('ebayRuName', ''),   // RuName from eBay developer portal (used as redirect_uri in OAuth)
-  ebayUser:   load('ebayUser', null),   // eBay username after OAuth connect, or null
+  ebayRuName:    load('ebayRuName', ''),
+  ebayUser:      load('ebayUser', null),
+  ebayToken:     load('ebayToken', null),
+  ebayTokenExp:  load('ebayTokenExp', 0),
+  ebayRefresh:   load('ebayRefresh', null),
   mlFeatureWeights: load('mlFeatureWeights', null), // null = use DEFAULT_WEIGHTS
   phpRate: load('phpRate', 57.2),
   mlWeights: load('mlWeights', { roi: 0.6, speed: 0.4 }),
@@ -92,8 +95,11 @@ export function persistRules()  { save('rules', state.rules); }
 export function persistSettings() {
   save('ebayKey',            state.ebayKey);
   save('ebaySecret',         state.ebaySecret);
-  save('ebayRuName',         state.ebayRuName);
-  save('ebayUser',           state.ebayUser);
+  save('ebayRuName',    state.ebayRuName);
+  save('ebayUser',      state.ebayUser);
+  save('ebayToken',     state.ebayToken);
+  save('ebayTokenExp',  state.ebayTokenExp);
+  save('ebayRefresh',   state.ebayRefresh);
   save('phpRate',            state.phpRate);
   save('mlWeights',          state.mlWeights);
   save('cardPrefs',          state.cardPrefs);

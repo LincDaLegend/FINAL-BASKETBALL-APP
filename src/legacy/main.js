@@ -148,6 +148,36 @@ window.resetAllConfig     = resetAllConfig;
 window.setMLWeight        = setMLWeight;
 
 // Settings
+window.placeBid = async (itemId, title) => {
+  const input = document.getElementById(`bid-${itemId}`);
+  const maxBid = parseFloat(input?.value);
+  if (!maxBid || maxBid <= 0) {
+    state.notify = { type: 'err', msg: 'Enter a valid max bid amount.' };
+    window.renderApp();
+    return;
+  }
+  if (!state.ebayToken) {
+    state.notify = { type: 'err', msg: 'Connect your eBay account in Settings first.' };
+    window.renderApp();
+    return;
+  }
+  state.notify = { type: 'info', msg: `Placing bid on "${title.slice(0, 40)}..."` };
+  window.renderApp();
+  try {
+    const resp = await fetch('/api/ebay/bid', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itemId, maxBid, userToken: state.ebayToken }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || 'Bid failed');
+    state.notify = { type: 'ok', msg: `Bid placed! Max: $${maxBid.toFixed(2)}` };
+  } catch (e) {
+    state.notify = { type: 'err', msg: `Bid failed: ${e.message}` };
+  }
+  window.renderApp();
+};
+
 window.connectEbayAccount = () => {
   if (!state.ebayKey || !state.ebaySecret || !state.ebayRuName) {
     state.notify = { type: 'err', msg: 'Save your App ID, Client Secret, and RuName in Settings first.' };
@@ -250,7 +280,10 @@ window.renderApp = () => {
     // Clean the query string without a page reload
     history.replaceState(null, '', window.location.pathname);
     if (user) {
-      state.ebayUser = user;
+      state.ebayUser     = user;
+      state.ebayToken    = params.get('ebay_token')     || null;
+      state.ebayTokenExp = parseInt(params.get('ebay_token_exp') || '0', 10);
+      state.ebayRefresh  = params.get('ebay_refresh')   || null;
       import('./utils/state.js').then(({ persistSettings }) => persistSettings());
       state.notify = { type: 'ok', msg: `eBay account connected: ${user}` };
     } else if (err) {
