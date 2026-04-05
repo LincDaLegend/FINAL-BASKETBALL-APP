@@ -263,12 +263,17 @@ export async function doSearch() {
       return;
     }
 
-    listings.forEach(l => {
+    const _rules = state.rules;
+    const _deals = state.deals;
+    const _weights = state.mlFeatureWeights;
+    console.log('[score] rules:', _rules, '| deals:', _deals?.length, '| weights:', _weights);
+    listings.forEach((l, i) => {
       try {
-        l.aiScore = ruleMLScore(l, null, state.rules, state.deals, state.mlFeatureWeights);
-        if (!Number.isFinite(l.aiScore)) l.aiScore = 0;
+        l.aiScore = ruleMLScore(l, null, _rules, _deals, _weights);
+        if (i === 0) console.log('[score] first listing:', l.title, '→', l.aiScore);
+        if (!Number.isFinite(l.aiScore)) { console.warn('[score] NaN for:', l.title); l.aiScore = 0; }
       } catch (err) {
-        console.error('Score error:', err, l);
+        console.error('[score] ERROR:', err.message, '| listing:', l.title, '| price:', l.price);
         l.aiScore = 0;
       }
     });
