@@ -3,6 +3,12 @@ import { state } from './state.js';
 import { extractFeatures, mlScore, DEFAULT_WEIGHTS } from './ml.js';
 import { listingEmbScore } from './embedding.js';
 
+// TF.js loaded lazily so it doesn't block api.js on initial parse
+let _predictScore = null;
+if (typeof window !== 'undefined') {
+  import('./tfModel.js').then(m => { _predictScore = m.predictScore; }).catch(() => {});
+}
+
 // ── Set / card rarity scoring ─────────────────────────────────────────────────
 // Returns a 0–1 continuous score representing how scarce this card is to source.
 // Operates entirely on the listing title — no external calls needed.
@@ -189,8 +195,9 @@ export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
   const featureScore  = mlScore(features, weights, listingPlayer) / 100; // 0–1
 
   // Neural network score (TF.js) — used when model has been trained on ≥3 deals
-  // TF.js neural score — only active after user has trained model (skipped on fresh install)
-  const tfScore = null;
+  const tfScore = (state.tfModelReady && state.tfModel && _predictScore)
+    ? _predictScore(state.tfModel, listing, 500) / 100
+    : null;
 
   // Semantic embedding score — how similar is this listing to your past winners?
   const embRaw  = listingEmbScore(listing.title, state.embModel); // 0–1 or null
