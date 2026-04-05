@@ -38,6 +38,7 @@ export async function GET(req) {
   const response = NextResponse.redirect(url);
 
   const cookieOpts = { httpOnly: true, secure: process.env.NODE_ENV === 'production', maxAge: 300, sameSite: 'lax', path: '/' };
+  if (clientId)     response.cookies.set('ebay_id', clientId,     cookieOpts);
   if (clientSecret) response.cookies.set('ebay_cs', clientSecret, cookieOpts);
   if (ruName)       response.cookies.set('ebay_ru', ruName,       cookieOpts);
 

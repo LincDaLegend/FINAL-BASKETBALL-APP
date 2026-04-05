@@ -5,13 +5,13 @@ export async function GET(req) {
   const code  = searchParams.get('code');
   const error = searchParams.get('error');
 
-  const appBase = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+  const appBase = process.env.NEXT_PUBLIC_APP_URL || new URL(req.url).origin;
 
   if (error || !code) {
     return NextResponse.redirect(`${appBase}/?ebay_error=${encodeURIComponent(error || 'no_code')}`);
   }
 
-  const clientId     = process.env.EBAY_APP_ID;
+  const clientId     = process.env.EBAY_APP_ID        || req.cookies.get('ebay_id')?.value;
   const clientSecret = process.env.EBAY_CLIENT_SECRET || req.cookies.get('ebay_cs')?.value;
   // redirect_uri in token exchange must be the RuName, same as used in the auth request
   const redirectUri  = process.env.EBAY_REDIRECT_URI  || req.cookies.get('ebay_ru')?.value;
@@ -55,6 +55,7 @@ export async function GET(req) {
     const successResp = NextResponse.redirect(
       `${appBase}/?ebay_user=${encodeURIComponent(username)}`
     );
+    successResp.cookies.delete('ebay_id');
     successResp.cookies.delete('ebay_cs');
     successResp.cookies.delete('ebay_ru');
     return successResp;
