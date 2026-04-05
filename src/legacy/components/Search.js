@@ -97,7 +97,7 @@ function renderResults() {
     const scoreLetterCls = score >= 70 ? 'score-A' : score >= 45 ? 'score-B' : 'score-C';
     const scaledScore = score >= 70 ? 'A' : score >= 45 ? 'B' : 'C';
     const phpPrice = toPhp(r.price, state.phpRate);
-    const isAuction = r.buyingOption === 'AUCTION';
+    const isAuction = r.buyingOption === 'AUCTION' || r.buyingOption === 'AUCTION_WITH_BIN';
     const tLeft = isAuction ? timeLeft(r.endTime) : null;
     // Urgency colour: red if < 1h, amber if < 4h, otherwise neutral
     const tLeftMs = r.endTime ? new Date(r.endTime) - Date.now() : Infinity;
@@ -246,7 +246,15 @@ export async function doSearch() {
       return;
     }
 
-    listings.forEach(l => { l.aiScore = ruleMLScore(l, null, state.rules, state.deals, state.mlFeatureWeights); });
+    listings.forEach(l => {
+      try {
+        l.aiScore = ruleMLScore(l, null, state.rules, state.deals, state.mlFeatureWeights);
+        if (!Number.isFinite(l.aiScore)) l.aiScore = 30; // fallback if NaN/Infinity
+      } catch (err) {
+        console.error('Score error:', err, l);
+        l.aiScore = 30;
+      }
+    });
     state.results = [...listings].sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));
     state.loading = false;
     window.renderApp();
