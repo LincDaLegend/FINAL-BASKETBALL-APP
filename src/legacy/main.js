@@ -185,7 +185,7 @@ window.diagRunSearch    = diagRunSearch;
 
 // Bid popup
 window.openBidPopup = (url) => {
-  window.open(url, 'ebay-bid', 'width=500,height=720,resizable=yes,scrollbars=yes');
+  window.open(url, '_blank', 'noopener');
 };
 
 // Search suggestions

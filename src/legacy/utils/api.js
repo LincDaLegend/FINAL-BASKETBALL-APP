@@ -98,7 +98,7 @@ export function getPlayerCategory(title, playerCategories) {
 }
 
 export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
-  const price = listing.price;
+  const price = listing.price || 0;
 
   // Auto-detect player demand tier from listing title
   const detectedCat = getPlayerCategory(listing.title, state.playerCategories);
@@ -109,10 +109,11 @@ export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
   const personalMultiplier = catDeals.length >= 2
     ? 1 + Math.min(1.5, Math.max(0, catDeals.reduce((a, d) => a + (d.roi || 0), 0) / catDeals.length / 100))
     : 1.20;
-  const avgSold = listing.avgSold && listing.avgSold !== price * 1.35
+  const avgSold = (listing.avgSold && listing.avgSold !== price * 1.35)
     ? listing.avgSold
     : price * personalMultiplier;
-  const roi = ((avgSold - price) / price) * 100;
+  // Guard against price=0 (eBay sometimes omits price for auctions with no bids)
+  const roi = price > 0 ? ((avgSold - price) / price) * 100 : 20;
 
   const roiScore = rule
     ? (roi >= rule.minROI ? 1 : Math.max(0, roi / Math.max(1, rule.minROI)))
