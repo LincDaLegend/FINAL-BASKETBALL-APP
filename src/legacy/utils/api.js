@@ -1,13 +1,8 @@
 import { EBAY_FINDING_API, PHP_RATE, DEFAULT_SET_RARITY_TIERS, DEFAULT_RULES } from './constants.js';
 import { state } from './state.js';
-import { extractFeatures, mlScore, DEFAULT_WEIGHTS } from './ml.js';
+import { extractFeatures, mlScore } from './ml.js';
 import { listingEmbScore } from './embedding.js';
 
-// TF.js loaded lazily so it doesn't block api.js on initial parse
-let _predictScore = null;
-if (typeof window !== 'undefined') {
-  import('./tfModel.js').then(m => { _predictScore = m.predictScore; }).catch(() => {});
-}
 
 // ── Set / card rarity scoring ─────────────────────────────────────────────────
 // Returns a 0–1 continuous score representing how scarce this card is to source.
@@ -102,127 +97,94 @@ export function getPlayerCategory(title, playerCategories) {
   return null;
 }
 
+// Parse any value to a finite number, or return fallback
+function n(val, fallback = 0) {
+  const x = parseFloat(val);
+  return Number.isFinite(x) ? x : fallback;
+}
+
 export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
-  const price = listing.price || 0;
+  const title = String(listing?.title || '');
+  const price = Math.max(0, n(listing?.price, 0));
 
-  // Auto-detect player demand tier from listing title
-  const detectedCat = getPlayerCategory(listing.title, state.playerCategories);
-  const rule = (rules && detectedCat) ? (rules[detectedCat] || null) : null;
+  // ── 1. Player tier ─────────────────────────────────────────────────────────
+  const cat = getPlayerCategory(title, state.playerCategories);
 
-  // Build estimated ROI using personal deal history for this player tier
-  const catDeals = detectedCat ? (deals || []).filter(d => d.category === detectedCat) : [];
-  const personalMultiplier = catDeals.length >= 2
-    ? 1 + Math.min(1.5, Math.max(0, catDeals.reduce((a, d) => a + (d.roi || 0), 0) / catDeals.length / 100))
+  // ── 2. minROI — pulled from rules, always a safe number ───────────────────
+  const safeRules = (rules && typeof rules === 'object') ? rules : DEFAULT_RULES;
+  const catRule   = (cat && safeRules[cat]) || DEFAULT_RULES[cat] || {};
+  const minROI    = Math.max(1, n(catRule.minROI, 25));
+
+  // ── 3. Deal-history ROI multiplier ────────────────────────────────────────
+  const safeDealsList = Array.isArray(deals) ? deals : [];
+  const catDeals = cat ? safeDealsList.filter(d => d?.category === cat) : [];
+  const mult = catDeals.length >= 2
+    ? 1 + Math.min(1.5, Math.max(0,
+        catDeals.reduce((s, d) => s + n(d.roi, 0), 0) / catDeals.length / 100))
     : 1.20;
-  const avgSold = (listing.avgSold && listing.avgSold !== price * 1.35)
-    ? listing.avgSold
-    : price * personalMultiplier;
-  // Guard against price=0 (eBay sometimes omits price for auctions with no bids)
-  const roi = price > 0 ? ((avgSold - price) / price) * 100 : 20;
 
-  const minROI = rule?.minROI ?? DEFAULT_RULES[detectedCat]?.minROI ?? 25;
-  const roiScore = roi >= minROI ? 1 : Math.max(0, roi / Math.max(1, minROI));
+  // ── 4. ROI signal (0–1) ────────────────────────────────────────────────────
+  const roi      = price > 0 ? (mult - 1) * 100 : 20;
+  const roiScore = Math.min(1, Math.max(0, roi / minROI));
 
-  // ── Set rarity — computed early, used for both isPremiumSet and final blend ──
-  const rarityScore = computeSetRarity(listing.title);
+  // ── 5. Set rarity (0–1) ────────────────────────────────────────────────────
+  const rarityScore = computeSetRarity(title);
 
-  // ── Player-category suitability ─────────────────────────────────────────────
-  // Determines how "appropriate" this card type is for the detected player tier.
+  // ── 6. Card features ───────────────────────────────────────────────────────
   const features    = extractFeatures(listing);
-  const hasPremium  = features.auto   || features.patch  || features.logoman || features.rpa;
-  const hasTopGrade = features.psa10  || features.bgs10;
-  const hasMidGrade = features.psa9   || features.psa8;
-  const isRare      = features.sp     || features.ssp    || features.oneOfOne;
-  // High-end+ sets (Obsidian, Immaculate, Spectra, NT, Flawless, case hits, etc.) elevate
-  // even plain base cards — a volatile player's Immaculate base still moves.
+  const hasPremium  = !!(features.auto  || features.patch || features.logoman || features.rpa);
+  const hasTopGrade = !!(features.psa10 || features.bgs10);
+  const hasMidGrade = !!(features.psa9  || features.psa8);
   const isPremiumSet = rarityScore >= 0.78;
-  const isValuable  = hasPremium || hasTopGrade || hasMidGrade || isRare || isPremiumSet;
 
+  // ── 7. Suitability for player tier (0–1) ──────────────────────────────────
   let suitability;
-  switch (detectedCat) {
-    case 'strong':
-      // All card types have local demand; premium gets a small extra boost
-      suitability = isValuable ? 1.0 : 0.82;
-      break;
-    case 'middle':
-      // Plain low end doesn't move — needs a hook to fetch decent prices
-      suitability = isValuable ? 1.0 : 0.38;
-      break;
-    case 'volatile':
-      // Very low PH demand — only autos/GU/top grades can move
-      suitability = isValuable ? 0.78 : 0.12;
-      break;
-    case 'ph-specific': {
-      // Filipino blood — autos/GUs are gold; premium sets still move; plain low end is a trap
-      const isDylanHarper = listing.title.toUpperCase().includes('DYLAN HARPER');
-      if (hasPremium) {
-        suitability = 1.05;                   // auto/patch/logoman — top tier
-      } else if (isPremiumSet) {
-        suitability = 0.82;                   // Flawless/NT/Obsidian base — collector demand in PH
-      } else if (hasTopGrade) {
-        suitability = 0.72;                   // PSA 10 / BGS 10 — graded premium
-      } else if (isDylanHarper && features.rookie) {
-        suitability = 0.72;
-      } else if (hasMidGrade) {
-        suitability = 0.55;                   // PSA 9 — solid but not a must-buy
-      } else {
-        suitability = 0.35;                   // plain base/parallel — usually a trap
-      }
-      break;
-    }
-    default:
-      // Unknown player — cautious neutral; let other signals decide
-      suitability = 0.62;
+  const isValuable = hasPremium || hasTopGrade || hasMidGrade || isPremiumSet
+                  || features.sp || features.ssp || features.oneOfOne;
+  if (cat === 'strong')   suitability = isValuable ? 1.0 : 0.82;
+  else if (cat === 'middle')   suitability = isValuable ? 1.0 : 0.38;
+  else if (cat === 'volatile') suitability = isValuable ? 0.78 : 0.12;
+  else if (cat === 'ph-specific') {
+    const isDylanRC = title.toUpperCase().includes('DYLAN HARPER') && features.rookie;
+    if      (hasPremium)   suitability = 1.0;
+    else if (isPremiumSet) suitability = 0.82;
+    else if (hasTopGrade)  suitability = 0.72;
+    else if (isDylanRC)    suitability = 0.72;
+    else if (hasMidGrade)  suitability = 0.55;
+    else                   suitability = 0.35;
   }
+  else suitability = 0.62;
 
-  // Deal-history boost: reward listings whose ROI exceeds your average in this tier
+  // ── 8. Aesthetic boost (small, ±0.05) ─────────────────────────────────────
+  const aestheticBoost = Math.min(0.08, Math.max(-0.05, (n(listing?.aestheticScore, 5) - 5) / 50));
+
+  // ── 9. Deal-history boost ─────────────────────────────────────────────────
   let mlBoost = 0;
   if (catDeals.length > 0) {
-    const avgDealROI = catDeals.reduce((a, d) => a + (d.roi || 0), 0) / catDeals.length;
-    mlBoost = Math.min(0.18, (roi / Math.max(1, avgDealROI)) * 0.16);
+    const avgROI = catDeals.reduce((s, d) => s + n(d.roi, 0), 0) / catDeals.length;
+    mlBoost = Math.min(0.18, (roi / Math.max(1, n(avgROI, 1))) * 0.16);
   }
 
-  // Aesthetic bonus
-  const aestheticBoost = Math.min(0.08, Math.max(-0.05, ((listing.aestheticScore || 5) - 5) / 50));
-
-  // Blend suitability + roiScore weighted by the ROI/speed slider
-  const roiW   = state.mlWeights?.roi   ?? 0.6;
+  // ── 10. Rule composite (suitability + roi + boosts) ────────────────────────
+  const roiW   = Math.min(1, Math.max(0, n(state.mlWeights?.roi, 0.6)));
   const ruleRaw = suitability * 0.42
                 + roiScore   * (0.50 * roiW / 0.6)
                 + mlBoost
                 + aestheticBoost;
 
-  // Pairwise-learned feature weights — per-player aware
-  // (features already computed above for suitability; reuse the same object)
-  const weights       = featureWeights || DEFAULT_WEIGHTS;
-  const listingPlayer = (listing.title || '').split(/\s+/).slice(0, 3).join(' ');
-  const featureScore  = mlScore(features, weights, listingPlayer) / 100; // 0–1
+  // ── 11. ML feature score (0–1) ─────────────────────────────────────────────
+  const player       = title.split(/\s+/).slice(0, 3).join(' ');
+  const featureScore = n(mlScore(features, featureWeights || null, player), 50) / 100;
 
-  // Neural network score (TF.js) — used when model has been trained on ≥3 deals
-  const tfScore = (state.tfModelReady && state.tfModel && _predictScore)
-    ? _predictScore(state.tfModel, listing, 500) / 100
-    : null;
+  // ── 12. Semantic embedding (optional) ──────────────────────────────────────
+  const embScore = listingEmbScore(title, state.embModel); // 0–1 or null
 
-  // Semantic embedding score — how similar is this listing to your past winners?
-  const embRaw  = listingEmbScore(listing.title, state.embModel); // 0–1 or null
-  const embScore = embRaw !== null ? embRaw : null;
+  // ── 13. Blend ──────────────────────────────────────────────────────────────
+  const blended = embScore !== null
+    ? ruleRaw * 0.40 + featureScore * 0.25 + embScore * 0.18 + rarityScore * 0.17
+    : ruleRaw * 0.45 + featureScore * 0.33 + rarityScore * 0.22;
 
-  let blended;
-  if (tfScore !== null && embScore !== null) {
-    // All 5 signals: 30% rule + 25% neural + 18% pairwise + 12% embedding + 15% rarity
-    blended = ruleRaw * 0.30 + tfScore * 0.25 + featureScore * 0.18 + embScore * 0.12 + rarityScore * 0.15;
-  } else if (tfScore !== null) {
-    // No embedding: 33% rule + 27% neural + 22% pairwise + 18% rarity
-    blended = ruleRaw * 0.33 + tfScore * 0.27 + featureScore * 0.22 + rarityScore * 0.18;
-  } else if (embScore !== null) {
-    // TF not ready: 40% rule + 25% pairwise + 18% embedding + 17% rarity
-    blended = ruleRaw * 0.40 + featureScore * 0.25 + embScore * 0.18 + rarityScore * 0.17;
-  } else {
-    // Fallback: 45% rule + 33% pairwise + 22% rarity
-    blended = ruleRaw * 0.45 + featureScore * 0.33 + rarityScore * 0.22;
-  }
-
-  return Math.min(100, Math.round(blended * 100));
+  return Math.min(100, Math.max(0, Math.round(n(blended, 0) * 100)));
 }
 
 export function scoreVerdict(score) {
