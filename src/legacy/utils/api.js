@@ -102,7 +102,6 @@ export function getPlayerCategory(title, playerCategories) {
   return null;
 }
 
-let _scoreDebugDone = false;
 export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
   const price = listing.price || 0;
 
@@ -224,19 +223,7 @@ export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
     blended = ruleRaw * 0.45 + featureScore * 0.33 + rarityScore * 0.22;
   }
 
-  const finalScore = Math.min(100, Math.round(blended * 100));
-
-  if (!_scoreDebugDone) {
-    _scoreDebugDone = true;
-    console.log('[ruleMLScore debug]', {
-      title: listing.title,
-      price, detectedCat, roiScore, rarityScore, suitability,
-      ruleRaw, featureScore, blended, finalScore,
-      rules: typeof rules, deals: (deals||[]).length,
-    });
-  }
-
-  return finalScore;
+  return Math.min(100, Math.round(blended * 100));
 }
 
 export function scoreVerdict(score) {

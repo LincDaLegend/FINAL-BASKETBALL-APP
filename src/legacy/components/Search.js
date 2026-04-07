@@ -1,7 +1,7 @@
 import { state } from '../utils/state.js';
 import { searchEbay, ruleMLScore, scoreVerdict, toPhp, getPlayerCategory } from '../utils/api.js';
 import { extractFeatures, topFeatures } from '../utils/ml.js';
-import { CAT_BADGE_CLASS, CAT_LABEL } from '../utils/constants.js';
+import { CAT_BADGE_CLASS, CAT_LABEL, DEFAULT_RULES, DEFAULT_PLAYER_CATEGORIES, SAMPLE_DEALS } from '../utils/constants.js';
 
 export function renderSearch() {
   return `
@@ -145,22 +145,6 @@ function renderResults() {
           </div>
 
           <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
-            ${r.viewUrl && isAuction && state.ebayToken
-              ? `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
-                  <input
-                    id="bid-${r.itemId}"
-                    type="number"
-                    min="${r.price + 0.01}"
-                    step="0.50"
-                    placeholder="Max bid $"
-                    style="width:100px;padding:4px 8px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12px"
-                  />
-                  <button class="btn-primary btn-sm" onclick="window.placeBid('${r.itemId}', '${escHtml(r.title)}')">Place Bid</button>
-                  <a style="font-size:11px;color:var(--accent)" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener">view ↗</a>
-                </div>`
-              : r.viewUrl && isAuction
-                ? `<a class="btn-primary btn-sm" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener">Bid Now</a>`
-                : ''}
             ${r.viewUrl
               ? `<a class="ebay-link" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener">view on eBay →</a>`
               : ''}
@@ -270,17 +254,16 @@ export async function doSearch() {
       queryWords.every(w => l.title.toUpperCase().includes(w))
     );
 
-    const _rules = state.rules;
-    const _deals = state.deals;
-    const _weights = state.mlFeatureWeights;
-    console.log('[score] rules:', _rules, '| deals:', _deals?.length, '| weights:', _weights);
-    relevant.forEach((l, i) => {
+    const _rules = state.rules || DEFAULT_RULES;
+    const _deals = state.deals || SAMPLE_DEALS;
+    const _weights = state.mlFeatureWeights || null;
+    if (!state.playerCategories) state.playerCategories = DEFAULT_PLAYER_CATEGORIES;
+    relevant.forEach(l => {
       try {
         l.aiScore = ruleMLScore(l, null, _rules, _deals, _weights);
-        if (i === 0) console.log('[score] first listing:', l.title, '→', l.aiScore);
-        if (!Number.isFinite(l.aiScore)) { console.warn('[score] NaN for:', l.title); l.aiScore = 0; }
+        if (!Number.isFinite(l.aiScore)) l.aiScore = 0;
       } catch (err) {
-        console.error('[score] ERROR:', err.message, '| listing:', l.title, '| price:', l.price);
+        console.error('[score]', err.message, l.title);
         l.aiScore = 0;
       }
     });
