@@ -263,11 +263,18 @@ export async function doSearch() {
       return;
     }
 
+    // Filter to listings that actually contain every word of the query in the title
+    // This removes eBay's "related" results that don't match what was searched
+    const queryWords = state.query.toUpperCase().split(/\s+/).filter(Boolean);
+    const relevant = listings.filter(l =>
+      queryWords.every(w => l.title.toUpperCase().includes(w))
+    );
+
     const _rules = state.rules;
     const _deals = state.deals;
     const _weights = state.mlFeatureWeights;
     console.log('[score] rules:', _rules, '| deals:', _deals?.length, '| weights:', _weights);
-    listings.forEach((l, i) => {
+    relevant.forEach((l, i) => {
       try {
         l.aiScore = ruleMLScore(l, null, _rules, _deals, _weights);
         if (i === 0) console.log('[score] first listing:', l.title, '→', l.aiScore);
@@ -278,7 +285,7 @@ export async function doSearch() {
       }
     });
 
-    state.results = [...listings].sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));
+    state.results = [...relevant].sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));
     state.loading = false;
     window.renderApp();
   } catch (e) {
