@@ -1,4 +1,4 @@
-import { EBAY_FINDING_API, PHP_RATE, DEFAULT_SET_RARITY_TIERS } from './constants.js';
+import { EBAY_FINDING_API, PHP_RATE, DEFAULT_SET_RARITY_TIERS, DEFAULT_RULES } from './constants.js';
 import { state } from './state.js';
 import { extractFeatures, mlScore, DEFAULT_WEIGHTS } from './ml.js';
 import { listingEmbScore } from './embedding.js';
@@ -120,9 +120,8 @@ export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
   // Guard against price=0 (eBay sometimes omits price for auctions with no bids)
   const roi = price > 0 ? ((avgSold - price) / price) * 100 : 20;
 
-  const roiScore = rule
-    ? (roi >= rule.minROI ? 1 : Math.max(0, roi / Math.max(1, rule.minROI)))
-    : 0.5;
+  const minROI = rule?.minROI ?? DEFAULT_RULES[detectedCat]?.minROI ?? 25;
+  const roiScore = roi >= minROI ? 1 : Math.max(0, roi / Math.max(1, minROI));
 
   // ── Set rarity — computed early, used for both isPremiumSet and final blend ──
   const rarityScore = computeSetRarity(listing.title);
