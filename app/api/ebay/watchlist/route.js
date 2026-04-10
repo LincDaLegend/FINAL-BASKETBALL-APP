@@ -1,43 +1,45 @@
 import { NextResponse } from 'next/server';
 
+// Trading API AddToWatchList — works with basic user OAuth token (no extra scope needed)
 export async function POST(req) {
-  const { itemId, userToken } = await req.json();
+  const { itemId, userToken, appId } = await req.json();
 
   if (!itemId || !userToken) {
     return NextResponse.json({ error: 'itemId and userToken are required.' }, { status: 400 });
   }
 
-  const resp = await fetch(
-    `https://api.ebay.com/buy/browse/v1/item/${encodeURIComponent(itemId)}/addItemToWatchlist`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${userToken}`,
-        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
-        'Content-Type': 'application/json',
-      },
-    }
-  );
+  // Browse API returns IDs like "v1|123456789|0" — Trading API needs just the numeric part
+  const numericId = itemId.includes('|') ? itemId.split('|')[1] : itemId;
 
-  // eBay returns 204 No Content on success
-  if (resp.status === 204 || resp.ok) {
+  const effectiveAppId = appId || process.env.EBAY_APP_ID || '';
+
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<AddToWatchListRequest xmlns="urn:ebay:apis:eBLBaseComponents">
+  <ItemID>${numericId}</ItemID>
+</AddToWatchListRequest>`;
+
+  const resp = await fetch('https://api.ebay.com/ws/api.dll', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/xml',
+      'X-EBAY-API-CALL-NAME': 'AddToWatchList',
+      'X-EBAY-API-SITEID': '0',
+      'X-EBAY-API-COMPATIBILITY-LEVEL': '967',
+      'X-EBAY-API-APP-NAME': effectiveAppId,
+      'X-EBAY-API-IAF-TOKEN': userToken,
+    },
+    body: xml,
+  });
+
+  const text = await resp.text();
+
+  if (text.includes('<Ack>Success</Ack>') || text.includes('<Ack>Warning</Ack>')) {
     return NextResponse.json({ success: true });
   }
 
-  const body = await resp.text();
-  let data = {};
-  try { data = JSON.parse(body); } catch {}
-
-  const ebayMsg = data?.errors?.[0]?.message || data?.error_description || body.slice(0, 200);
-
-  // Scope error — user needs to reconnect with buy.browse scope
-  if (resp.status === 403 || ebayMsg?.toLowerCase().includes('scope')) {
-    return NextResponse.json({
-      error: 'scope_missing',
-      detail: 'Your eBay token is missing the watchlist scope. Please reconnect your eBay account in Settings.',
-    }, { status: 403 });
-  }
-
-  console.error('[watchlist] eBay error', resp.status, ebayMsg);
-  return NextResponse.json({ error: ebayMsg || `eBay error ${resp.status}`, status: resp.status }, { status: resp.status });
+  // Extract error message from XML
+  const msgMatch = text.match(/<LongMessage>(.*?)<\/LongMessage>/);
+  const msg = msgMatch?.[1] || text.slice(0, 300);
+  console.error('[watchlist] Trading API error:', msg);
+  return NextResponse.json({ error: msg }, { status: 502 });
 }
