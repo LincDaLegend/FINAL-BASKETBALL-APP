@@ -144,10 +144,19 @@ function renderResults() {
             </div>
           </div>
 
-          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center">
             ${r.viewUrl
               ? `<a class="ebay-link" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener">view on eBay →</a>`
               : ''}
+            ${r.itemId ? (() => {
+              const watched = (state.watchlist || []).includes(r.itemId);
+              return `<button
+                class="btn-ghost btn-sm"
+                onclick="window.toggleWatch('${r.itemId}', '${escHtml(r.title)}')"
+                style="gap:4px;display:inline-flex;align-items:center"
+                title="${watched ? 'Remove from watchlist' : 'Add to eBay watchlist'}"
+              >${watched ? '♥' : '♡'} ${watched ? 'Watching' : 'Watch'}</button>`;
+            })() : ''}
           </div>
         </div>
 

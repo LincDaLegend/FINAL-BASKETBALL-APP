@@ -12,6 +12,7 @@ export const state = {
   ebayToken:     load('ebayToken', null),
   ebayTokenExp:  load('ebayTokenExp', 0),
   ebayRefresh:   load('ebayRefresh', null),
+  watchlist:     load('watchlist', []),   // local cache of watched itemIds
   mlFeatureWeights: load('mlFeatureWeights', null), // null = use DEFAULT_WEIGHTS
   phpRate: load('phpRate', 57.2),
   mlWeights: load('mlWeights', { roi: 0.6, speed: 0.4 }),
@@ -90,7 +91,8 @@ export function emptyDeal() {
   };
 }
 
-export function persistDeals() { save('deals', state.deals); }
+export function persistDeals()     { save('deals',     state.deals);     }
+export function persistWatchlist() { save('watchlist', state.watchlist); }
 export function persistRules()  { save('rules', state.rules); }
 export function persistSettings() {
   save('ebayKey',            state.ebayKey);

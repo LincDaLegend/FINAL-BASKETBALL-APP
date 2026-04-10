@@ -1,4 +1,4 @@
-import { state, emptyDeal } from './utils/state.js';
+import { state, emptyDeal, persistWatchlist } from './utils/state.js';
 import { buildModel, loadModel, trainOnDeals, saveModel } from './utils/tfModel.js';
 import { buildEmbeddingModel } from './utils/embedding.js';
 import { startEnrichment } from './utils/enrichment.js';
@@ -146,6 +146,44 @@ window.addSetToTier       = addSetToTier;
 window.removeSetFromTier  = removeSetFromTier;
 window.resetAllConfig     = resetAllConfig;
 window.setMLWeight        = setMLWeight;
+
+window.toggleWatch = async (itemId, title) => {
+  if (!state.watchlist) state.watchlist = [];
+  const already = state.watchlist.includes(itemId);
+
+  if (already) {
+    // Remove locally (eBay has no removeFromWatchlist API)
+    state.watchlist = state.watchlist.filter(id => id !== itemId);
+    persistWatchlist();
+    state.notify = { type: 'ok', msg: `Removed from local watchlist: ${title}` };
+    window.renderApp();
+    return;
+  }
+
+  // Add locally first so UI responds immediately
+  state.watchlist = [...state.watchlist, itemId];
+  persistWatchlist();
+  window.renderApp();
+
+  // Sync to eBay if user token is available
+  if (state.ebayToken) {
+    try {
+      const resp = await fetch('/api/ebay/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId, userToken: state.ebayToken }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data.error || `eBay error ${resp.status}`);
+      state.notify = { type: 'ok', msg: `♥ Watching on eBay: ${title}` };
+    } catch (err) {
+      state.notify = { type: 'err', msg: `Saved locally, but eBay sync failed: ${err.message}` };
+    }
+  } else {
+    state.notify = { type: 'ok', msg: `♥ Added to local watchlist. Connect eBay to sync.` };
+  }
+  window.renderApp();
+};
 
 // Settings
 window.placeBid = async (itemId, title) => {

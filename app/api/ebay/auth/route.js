@@ -20,6 +20,7 @@ export async function GET(req) {
     'https://api.ebay.com/oauth/api_scope',
     'https://api.ebay.com/oauth/api_scope/commerce.identity.readonly',
     'https://api.ebay.com/oauth/api_scope/buy.offer.auction',
+    'https://api.ebay.com/oauth/api_scope/buy.browse',
   ];
 
   // Encode credentials in the state param so callback can read them without relying on cookies
