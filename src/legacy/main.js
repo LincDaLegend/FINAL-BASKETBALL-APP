@@ -174,10 +174,15 @@ window.toggleWatch = async (itemId, title) => {
         body: JSON.stringify({ itemId, userToken: state.ebayToken }),
       });
       const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data.error || `eBay error ${resp.status}`);
-      state.notify = { type: 'ok', msg: `♥ Watching on eBay: ${title}` };
+      if (resp.status === 403 || data.error === 'scope_missing') {
+        state.notify = { type: 'err', msg: 'Reconnect your eBay account in Settings to enable watchlist sync.' };
+      } else if (!resp.ok) {
+        throw new Error(data.error || `eBay error ${resp.status}`);
+      } else {
+        state.notify = { type: 'ok', msg: `♥ Added to your eBay watchlist: ${title}` };
+      }
     } catch (err) {
-      state.notify = { type: 'err', msg: `Saved locally, but eBay sync failed: ${err.message}` };
+      state.notify = { type: 'err', msg: `Saved locally — eBay sync failed: ${err.message}` };
     }
   } else {
     state.notify = { type: 'ok', msg: `♥ Added to local watchlist. Connect eBay to sync.` };

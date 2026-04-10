@@ -24,7 +24,20 @@ export async function POST(req) {
     return NextResponse.json({ success: true });
   }
 
-  const data = await resp.json().catch(() => ({}));
-  const msg = data?.errors?.[0]?.message || `eBay error ${resp.status}`;
-  return NextResponse.json({ error: msg }, { status: resp.status });
+  const body = await resp.text();
+  let data = {};
+  try { data = JSON.parse(body); } catch {}
+
+  const ebayMsg = data?.errors?.[0]?.message || data?.error_description || body.slice(0, 200);
+
+  // Scope error — user needs to reconnect with buy.browse scope
+  if (resp.status === 403 || ebayMsg?.toLowerCase().includes('scope')) {
+    return NextResponse.json({
+      error: 'scope_missing',
+      detail: 'Your eBay token is missing the watchlist scope. Please reconnect your eBay account in Settings.',
+    }, { status: 403 });
+  }
+
+  console.error('[watchlist] eBay error', resp.status, ebayMsg);
+  return NextResponse.json({ error: ebayMsg || `eBay error ${resp.status}`, status: resp.status }, { status: resp.status });
 }
