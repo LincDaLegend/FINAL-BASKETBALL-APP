@@ -1,27 +1,36 @@
 import { NextResponse } from 'next/server';
 
 // Exponential decay: 7-day half-life
-// weight = e^(-λ · daysAgo), where λ = ln(2) / 7 ≈ 0.099
-// Sales from 7 days ago → 0.5× weight
-// Sales from 14 days ago → 0.25× weight
-// Sales from 30 days ago → 0.05× weight
 const LAMBDA = Math.LN2 / 7;
 
 function decayWeight(daysAgo) {
   return Math.exp(-LAMBDA * Math.max(0, daysAgo));
 }
 
-// Time-weighted mean: Σ(weight_i · price_i) / Σ(weight_i)
-// Falls back to simple mean if total weight is negligible (very stale data).
-function weightedMean(entries) {
+// IQR outlier removal + time-weighted mean
+function robustWeightedMean(entries) {
   if (!entries.length) return null;
-  const totalW = entries.reduce((s, e) => s + e.w, 0);
-  if (totalW < 0.05) {
-    // All data is very old — fall back to simple mean to avoid returning null
-    const sum = entries.reduce((s, e) => s + e.price, 0);
-    return sum / entries.length;
+  const prices = [...entries].sort((a, b) => a.price - b.price);
+  if (prices.length === 1) return prices[0].price;
+
+  const q1  = prices[Math.floor(prices.length * 0.25)].price;
+  const q3  = prices[Math.floor(prices.length * 0.75)].price;
+  const iqr = q3 - q1;
+  const lo  = q1 - 1.5 * iqr;
+  const hi  = q3 + 1.5 * iqr;
+  const clean = entries.filter(e => e.price >= lo && e.price <= hi);
+  if (!clean.length) return prices[Math.floor(prices.length / 2)].price;
+
+  const simpleMean = clean.reduce((s, e) => s + e.price, 0) / clean.length;
+  let sumW = 0, sumWP = 0;
+  for (const e of clean) {
+    const timeW    = decayWeight(e.daysAgo);
+    const centralW = 1 / (1 + Math.abs(e.price - simpleMean));
+    const w        = timeW * centralW;
+    sumW  += w;
+    sumWP += w * e.price;
   }
-  return entries.reduce((s, e) => s + e.price * e.w, 0) / totalW;
+  return sumWP / sumW;
 }
 
 function gradeKey(title) {
@@ -36,98 +45,119 @@ function gradeKey(title) {
   return 'raw';
 }
 
+let tokenCache = { token: null, expiresAt: 0 };
+
+async function getAccessToken(appId, secret) {
+  const now = Date.now();
+  if (tokenCache.token && now < tokenCache.expiresAt - 60_000) return tokenCache.token;
+
+  const credentials = Buffer.from(`${appId}:${secret}`).toString('base64');
+  const resp = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Basic ${credentials}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: 'grant_type=client_credentials&scope=https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%20https%3A%2F%2Fapi.ebay.com%2Foauth%2Fapi_scope%2Fbuy.marketplace.insights',
+    cache: 'no-store',
+  });
+
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error(`OAuth failed (${resp.status}): ${text.slice(0, 200)}`);
+  }
+  const data = await resp.json();
+  tokenCache = { token: data.access_token, expiresAt: now + data.expires_in * 1000 };
+  return tokenCache.token;
+}
+
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
-  const q     = (searchParams.get('q') || '').trim();
-  const appId = req.headers.get('x-ebay-key') || process.env.EBAY_APP_ID;
+  const q      = (searchParams.get('q') || '').trim();
+  const appId  = req.headers.get('x-ebay-key')    || process.env.EBAY_APP_ID;
+  const secret = req.headers.get('x-ebay-secret') || process.env.EBAY_CLIENT_SECRET;
 
-  if (!appId || !q) {
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: !appId ? 'no appId' : 'no query' });
+  if (!appId || !secret || !q) {
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: 'missing credentials or query' });
   }
 
-  const url = new URL('https://svcs.ebay.com/services/search/FindingService/v1');
-  url.searchParams.set('OPERATION-NAME',        'findCompletedItems');
-  url.searchParams.set('SERVICE-VERSION',        '1.0.0');
-  url.searchParams.set('SECURITY-APPNAME',       appId);
-  url.searchParams.set('RESPONSE-DATA-FORMAT',   'JSON');
-  url.searchParams.set('keywords',               q);
-  url.searchParams.set('sortOrder',              'EndTimeSoonest');
-  url.searchParams.set('paginationInput.entriesPerPage', '50');
+  let token;
+  try {
+    token = await getAccessToken(appId, secret);
+  } catch (e) {
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `auth: ${e.message}` });
+  }
+
+  const params = new URLSearchParams({
+    q,
+    limit: '50',
+    sort: 'lastSoldDate',
+  });
 
   let resp;
   try {
-    resp = await fetch(url.toString(), { cache: 'no-store' });
+    resp = await fetch(
+      `https://api.ebay.com/buy/marketplace_insights/v1_beta/item_sales/search?${params}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US',
+          'Content-Type': 'application/json',
+        },
+        cache: 'no-store',
+      }
+    );
   } catch (e) {
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `fetch failed: ${e.message}` });
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `fetch: ${e.message}` });
   }
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `eBay ${resp.status}: ${text.slice(0, 200)}` });
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `eBay ${resp.status}: ${text.slice(0, 300)}` });
   }
 
   let data;
   try { data = await resp.json(); } catch (e) {
-    const raw = await resp.text().catch(() => '');
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `JSON parse failed: ${raw.slice(0, 200)}` });
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `JSON parse: ${e.message}` });
   }
 
-  const ack = data?.findCompletedItemsResponse?.[0]?.ack?.[0];
-  if (ack && ack !== 'Success' && ack !== 'Warning') {
-    const errMsg = data?.findCompletedItemsResponse?.[0]?.errorMessage?.[0]?.error?.[0]?.message?.[0] || ack;
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `eBay ack=${ack}: ${errMsg}` });
-  }
-
-  const items = data?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.item || [];
+  const items = data?.itemSales || [];
   const now   = Date.now();
 
-  // Per-grade buckets: [{ price, w, daysAgo }]
   const buckets    = {};
   const allEntries = [];
-
-  // For trend: split into recent (≤7d) and older (8–30d)
   const recentPrices = [];
   const olderPrices  = [];
 
   for (const item of items) {
-    const title    = item.title?.[0] || '';
-    const priceRaw = item.sellingStatus?.[0]?.currentPrice?.[0]?.['__value__'];
-    const price    = parseFloat(priceRaw);
+    const title  = item.title || '';
+    const price  = parseFloat(item.lastSoldPrice?.value || 0);
     if (!price || price <= 0) continue;
 
-    // Parse sale timestamp
-    const endTimeStr = item.listingInfo?.[0]?.endTime?.[0] || '';
-    const endMs      = endTimeStr ? new Date(endTimeStr).getTime() : now;
-    const daysAgo    = (now - endMs) / 86_400_000;
-
-    const w  = decayWeight(daysAgo);
-    const gk = gradeKey(title);
+    const soldMs  = item.lastSoldDate ? new Date(item.lastSoldDate).getTime() : now;
+    const daysAgo = (now - soldMs) / 86_400_000;
+    const gk      = gradeKey(title);
 
     if (!buckets[gk]) buckets[gk] = [];
-    buckets[gk].push({ price, w, daysAgo });
-    allEntries.push({ price, w, daysAgo });
+    buckets[gk].push({ price, daysAgo });
+    allEntries.push({ price, daysAgo });
 
-    if (daysAgo <= 7)              recentPrices.push(price);
-    else if (daysAgo <= 30)        olderPrices.push(price);
+    if (daysAgo <= 7)       recentPrices.push(price);
+    else if (daysAgo <= 30) olderPrices.push(price);
   }
 
-  // Time-weighted mean per grade bucket
   const byGrade = {};
   for (const [gk, entries] of Object.entries(buckets)) {
-    const wm = weightedMean(entries);
+    const wm = robustWeightedMean(entries);
     if (wm != null) byGrade[gk] = Math.round(wm * 100) / 100;
   }
 
-  // Overall time-weighted market price
-  const overallWM = weightedMean(allEntries);
+  const overallWM = robustWeightedMean(allEntries);
 
-  // Trend: compare recent ≤7d simple mean vs older 8–30d simple mean
-  // positive = prices rising, negative = prices falling
-  let trend    = null;
-  let trendDir = 'stable';
+  let trend = null, trendDir = 'stable';
   if (recentPrices.length >= 2 && olderPrices.length >= 2) {
     const recentMean = recentPrices.reduce((s, p) => s + p, 0) / recentPrices.length;
-    const olderMean  = olderPrices.reduce((s, p) => s + p, 0)  / olderPrices.length;
+    const olderMean  = olderPrices.reduce((s, p)  => s + p, 0) / olderPrices.length;
     trend    = Math.round((recentMean - olderMean) / olderMean * 100);
     trendDir = trend > 5 ? 'up' : trend < -5 ? 'down' : 'stable';
   }

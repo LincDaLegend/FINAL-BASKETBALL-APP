@@ -170,6 +170,24 @@ function extractParallel(title) {
 // Compute market price reference from the already-fetched live listings.
 // Groups by (grade + parallel tier) for accurate like-for-like comparison.
 // Falls back to grade-only group when a tier group has fewer than 2 items.
+// Fetch sold prices from eBay Marketplace Insights API.
+// Returns { byGrade, weightedMean, count, trend, trendDir } or null on failure.
+export async function fetchSoldMarketValue(query) {
+  const headers = {};
+  if (state.ebayKey)    headers['x-ebay-key']    = state.ebayKey;
+  if (state.ebaySecret) headers['x-ebay-secret']  = state.ebaySecret;
+  try {
+    const resp = await fetch(`/api/ebay/sold?q=${encodeURIComponent(query)}`, { headers });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (data?.error) console.warn('[sold]', data.error);
+    return (data?.count > 0) ? data : null;
+  } catch (e) {
+    console.warn('[sold] fetch threw:', e.message);
+    return null;
+  }
+}
+
 export function computeMarketFromListings(listings) {
   if (!listings?.length) return null;
 

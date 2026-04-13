@@ -1,5 +1,5 @@
 import { state } from '../utils/state.js';
-import { searchEbay, computeMarketFromListings, ruleMLScore, scoreVerdict, toPhp, getPlayerCategory } from '../utils/api.js';
+import { searchEbay, fetchSoldMarketValue, computeMarketFromListings, ruleMLScore, scoreVerdict, toPhp, getPlayerCategory } from '../utils/api.js';
 import { extractFeatures, topFeatures } from '../utils/ml.js';
 import { CAT_BADGE_CLASS, CAT_LABEL, DEFAULT_RULES, DEFAULT_PLAYER_CATEGORIES, SAMPLE_DEALS } from '../utils/constants.js';
 
@@ -237,8 +237,11 @@ export async function doSearch() {
   window.renderApp();
 
   try {
-    const listings = await searchEbay(state.query, '', state.listingType, state.itemLocation);
-    const marketData = computeMarketFromListings(listings);
+    const [listings, soldData] = await Promise.all([
+      searchEbay(state.query, '', state.listingType, state.itemLocation),
+      fetchSoldMarketValue(state.query),
+    ]);
+    const marketData = soldData || computeMarketFromListings(listings);
 
     if (!listings.length) {
       state.loading = false;
