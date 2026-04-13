@@ -173,7 +173,8 @@ export async function GET(req) {
         return parseFloat(opt.shippingCost?.value || '0');
       })();
       const listingDate = item.itemCreationDate || null;
-      return { title, price, imgUrl, itemId, viewUrl, condition, grade, aestheticScore, avgSold: price * 1.35, endTime, listingDate, buyingOption, sellerId, sellerFeedback, shippingCost };
+      const country     = item.itemLocation?.country || '';
+      return { title, price, imgUrl, itemId, viewUrl, condition, grade, aestheticScore, avgSold: price * 1.35, endTime, listingDate, country, buyingOption, sellerId, sellerFeedback, shippingCost };
     })
     // When searching auctions, only show listings ending within 24 hours
     .filter(item => {

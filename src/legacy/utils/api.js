@@ -203,7 +203,8 @@ export function computeMarketFromListings(listings) {
     for (const e of clean) {
       const timeW    = Math.exp(-DECAY * e.daysOld);
       const centralW = 1 / (1 + Math.abs(e.price - simpleMean));
-      const w        = timeW * centralW;
+      const cnPenalty = e.isCN ? 0.35 : 1;   // CN listings count 35% (65% reduction)
+      const w        = timeW * centralW * cnPenalty;
       sumW  += w;
       sumWP += w * e.price;
     }
@@ -227,7 +228,8 @@ export function computeMarketFromListings(listings) {
       ? (now - new Date(l.listingDate).getTime()) / 86_400_000
       : 30; // assume 30 days old if no date
 
-    const entry = { price: totalPrice, daysOld };
+    const isCN  = (l.country || '').toUpperCase() === 'CN';
+    const entry = { price: totalPrice, daysOld, isCN };
 
     if (!tierBuckets[key])   tierBuckets[key]   = [];
     if (!gradeBuckets[gk])   gradeBuckets[gk]   = [];
