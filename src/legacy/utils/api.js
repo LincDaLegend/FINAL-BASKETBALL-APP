@@ -155,11 +155,14 @@ export function ruleMLScore(listing, _category, rules, deals, featureWeights, ma
   let marketRoiSignal = null;
   if (marketData && totalPrice > 0) {
     const gk = GRADE_KEY_MAP[listing?.grade || 'raw'] || 'raw';
-    const mv = marketData.byGrade?.[gk] ?? marketData.median;
+    // Prefer grade-specific time-weighted mean; fall back to overall weighted mean
+    const mv = marketData.byGrade?.[gk] ?? marketData.weightedMean;
     if (mv && mv > 0) {
       const realRoi = (mv - totalPrice) / totalPrice; // positive = underpriced
       listing.marketValue = Math.round(mv * 100) / 100;
       listing.realRoiPct  = Math.round(realRoi * 100);
+      listing.trendDir    = marketData.trendDir  || 'stable';
+      listing.trend       = marketData.trend     ?? null;
       // Signal 0–1: scales from 0% upside (signal=0) to 50%+ upside (signal=1)
       marketRoiSignal = Math.min(1, Math.max(0, realRoi / 0.50));
     }

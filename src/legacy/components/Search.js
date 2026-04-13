@@ -192,9 +192,14 @@ function renderResults() {
             const roi = r.realRoiPct ?? 0;
             const cls = roi >= 20 ? 'badge-buy' : roi >= 0 ? 'badge-consider' : 'badge-skip';
             const sign = roi >= 0 ? '+' : '';
+            const trendIcon  = r.trendDir === 'up' ? '↑' : r.trendDir === 'down' ? '↓' : '→';
+            const trendLabel = r.trendDir === 'up' ? 'trending' : r.trendDir === 'down' ? 'cooling' : 'stable';
+            const trendCls   = r.trendDir === 'up' ? 'badge-buy' : r.trendDir === 'down' ? 'badge-skip' : 'badge-gray';
+            const trendPct   = r.trend != null ? ` ${r.trend > 0 ? '+' : ''}${r.trend}%` : '';
             return `<div style="margin-top:6px">
               <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px">Market ~$${r.marketValue.toFixed(0)}</div>
               <span class="badge ${cls}">${sign}${roi}% vs mkt</span>
+              ${r.trendDir ? `<span class="badge ${trendCls}" style="margin-left:3px">${trendIcon} ${trendLabel}${trendPct}</span>` : ''}
             </div>`;
           })() : ''}
         </div>
