@@ -173,33 +173,39 @@ function extractParallel(title) {
 export function computeMarketFromListings(listings) {
   if (!listings?.length) return null;
 
-  // IQR outlier removal then weighted mean.
-  // Weights: inverse distance from the trimmed mean so prices closest
-  // to the centre of the distribution carry the most influence.
-  const robustMean = (arr) => {
-    if (!arr.length) return null;
-    const s = [...arr].sort((a, b) => a - b);
-    if (s.length < 2) return s[0];
+  // Robust weighted mean:
+  // 1. IQR outlier removal (Tukey fences) to drop extreme listings
+  // 2. Combined weight = time_decay × centrality
+  //    - time_decay: 7-day half-life so listings from this week outweigh
+  //      stale GTC listings from months ago (e^(-ln2/7 · daysOld))
+  //    - centrality: 1/(1+|p - simpleMean|) so prices near the centre
+  //      outweigh edge prices within the clean group
+  const DECAY = Math.LN2 / 7; // 7-day half-life
+  const now   = Date.now();
 
-    // Tukey fences: remove anything below Q1 - 1.5·IQR or above Q3 + 1.5·IQR
-    const q1  = s[Math.floor(s.length * 0.25)];
-    const q3  = s[Math.floor(s.length * 0.75)];
+  const robustMean = (entries) => {
+    // entries: [{ price, daysOld }]
+    if (!entries.length) return null;
+    const prices = entries.map(e => e.price).sort((a, b) => a - b);
+    if (prices.length < 2) return prices[0];
+
+    const q1  = prices[Math.floor(prices.length * 0.25)];
+    const q3  = prices[Math.floor(prices.length * 0.75)];
     const iqr = q3 - q1;
     const lo  = q1 - 1.5 * iqr;
     const hi  = q3 + 1.5 * iqr;
-    const clean = s.filter(p => p >= lo && p <= hi);
-    if (!clean.length) return s[Math.floor(s.length / 2)]; // fallback to median
+    const clean = entries.filter(e => e.price >= lo && e.price <= hi);
+    if (!clean.length) return prices[Math.floor(prices.length / 2)];
 
-    // Simple mean of trimmed group first (anchor for weighting)
-    const simpleMean = clean.reduce((a, b) => a + b, 0) / clean.length;
+    const simpleMean = clean.reduce((s, e) => s + e.price, 0) / clean.length;
 
-    // Weight each price by 1 / (1 + |price - simpleMean|)
-    // — prices close to the centre get weight ≈ 1, outliers get small weight
     let sumW = 0, sumWP = 0;
-    for (const p of clean) {
-      const w = 1 / (1 + Math.abs(p - simpleMean));
+    for (const e of clean) {
+      const timeW    = Math.exp(-DECAY * e.daysOld);
+      const centralW = 1 / (1 + Math.abs(e.price - simpleMean));
+      const w        = timeW * centralW;
       sumW  += w;
-      sumWP += w * p;
+      sumWP += w * e.price;
     }
     return sumWP / sumW;
   };
@@ -217,31 +223,36 @@ export function computeMarketFromListings(listings) {
     const year     = extractYear(l.title || '');
     const parallel = extractParallel(l.title || '');
     const key      = `${year}__${gk}__${parallel}`;
+    const daysOld  = l.listingDate
+      ? (now - new Date(l.listingDate).getTime()) / 86_400_000
+      : 30; // assume 30 days old if no date
+
+    const entry = { price: totalPrice, daysOld };
 
     if (!tierBuckets[key])   tierBuckets[key]   = [];
     if (!gradeBuckets[gk])   gradeBuckets[gk]   = [];
-    tierBuckets[key].push(totalPrice);
-    gradeBuckets[gk].push(totalPrice);
-    allPrices.push(totalPrice);
+    tierBuckets[key].push(entry);
+    gradeBuckets[gk].push(entry);
+    allPrices.push(entry);
 
     // Store key on listing so ruleMLScore can look it up
     l._marketKey = key;
     l._marketLabel = `${year} · ${parallel}`;
   }
 
-  // Tier medians (only for groups with ≥2 listings)
+  // Tier means (only for groups with ≥2 listings)
   const byTier = {};
-  for (const [key, prices] of Object.entries(tierBuckets)) {
-    if (prices.length >= 2) {
-      const v = robustMean(prices);
+  for (const [key, entries] of Object.entries(tierBuckets)) {
+    if (entries.length >= 2) {
+      const v = robustMean(entries);
       if (v != null) byTier[key] = Math.round(v * 100) / 100;
     }
   }
 
-  // Grade medians (fallback)
+  // Grade means (fallback)
   const byGrade = {};
-  for (const [gk, prices] of Object.entries(gradeBuckets)) {
-    const v = robustMean(prices);
+  for (const [gk, entries] of Object.entries(gradeBuckets)) {
+    const v = robustMean(entries);
     if (v != null) byGrade[gk] = Math.round(v * 100) / 100;
   }
 

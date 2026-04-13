@@ -172,7 +172,8 @@ export async function GET(req) {
         if (opt.shippingCostType === 'FREE') return 0;
         return parseFloat(opt.shippingCost?.value || '0');
       })();
-      return { title, price, imgUrl, itemId, viewUrl, condition, grade, aestheticScore, avgSold: price * 1.35, endTime, buyingOption, sellerId, sellerFeedback, shippingCost };
+      const listingDate = item.itemCreationDate || null;
+      return { title, price, imgUrl, itemId, viewUrl, condition, grade, aestheticScore, avgSold: price * 1.35, endTime, listingDate, buyingOption, sellerId, sellerFeedback, shippingCost };
     })
     // When searching auctions, only show listings ending within 24 hours
     .filter(item => {
