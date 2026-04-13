@@ -103,23 +103,34 @@ function n(val, fallback = 0) {
   return Number.isFinite(x) ? x : fallback;
 }
 
+// Classify a listing title into a parallel tier for grouping purposes.
+// Returns a short string key used as part of the market-price bucket key.
+function parallelTier(title) {
+  const t = String(title || '').toUpperCase();
+  if (/\b1\/1\b/.test(t) || t.includes('ONE OF ONE')) return '1of1';
+  if (/\/[2-9]\b/.test(t))                             return 'ultra-low';
+  if (/\/(1[0-9]|2[0-5])\b/.test(t))                  return 'low-print';
+  if (/\/\d+/.test(t))                                 return 'numbered';
+  if (t.includes('LOGOMAN') || t.includes('PATCH AUTO') || t.includes('RPA')) return 'rpa';
+  if (t.includes('AUTO') || t.includes(' AU '))        return 'auto';
+  if (t.includes('HYPER') || t.includes('DISCO') || t.includes('KABOOM')) return 'premium-parallel';
+  if (t.includes('GOLD'))                              return 'gold';
+  if (t.includes('RED'))                               return 'red';
+  if (t.includes('BLUE'))                              return 'blue';
+  if (t.includes('GREEN'))                             return 'green';
+  if (t.includes('PURPLE') || t.includes('VIOLET'))   return 'purple';
+  if (t.includes('ORANGE'))                            return 'orange';
+  if (t.includes('PINK'))                              return 'pink';
+  if (t.includes('SILVER') || t.includes('HOLO'))     return 'silver';
+  if (t.includes('PRIZM') || t.includes('REFRACTOR') || t.includes('OPTIC')) return 'base-chrome';
+  return 'base';
+}
+
 // Compute market price reference from the already-fetched live listings.
-// Groups by grade tier and returns the median price per tier.
-// This avoids a separate API call and is immune to Finding API rate limits.
+// Groups by (grade + parallel tier) for accurate like-for-like comparison.
+// Falls back to grade-only group when a tier group has fewer than 2 items.
 export function computeMarketFromListings(listings) {
   if (!listings?.length) return null;
-
-  const buckets = {};
-  const allPrices = [];
-
-  for (const l of listings) {
-    const totalPrice = (l.price || 0) + (l.shippingCost || 0);
-    if (totalPrice <= 0) continue;
-    const gk = GRADE_KEY_MAP[l.grade || 'raw'] || 'raw';
-    if (!buckets[gk]) buckets[gk] = [];
-    buckets[gk].push(totalPrice);
-    allPrices.push(totalPrice);
-  }
 
   const median = (arr) => {
     if (!arr.length) return null;
@@ -128,14 +139,48 @@ export function computeMarketFromListings(listings) {
     return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
   };
 
+  // Build (grade + parallel) buckets AND grade-only buckets as fallback
+  const tierBuckets  = {};   // key: "psa10__silver"
+  const gradeBuckets = {};   // key: "psa10"
+  const allPrices    = [];
+
+  for (const l of listings) {
+    const totalPrice = (l.price || 0) + (l.shippingCost || 0);
+    if (totalPrice <= 0) continue;
+
+    const gk  = GRADE_KEY_MAP[l.grade || 'raw'] || 'raw';
+    const pt  = parallelTier(l.title || '');
+    const key = `${gk}__${pt}`;
+
+    if (!tierBuckets[key])   tierBuckets[key]   = [];
+    if (!gradeBuckets[gk])   gradeBuckets[gk]   = [];
+    tierBuckets[key].push(totalPrice);
+    gradeBuckets[gk].push(totalPrice);
+    allPrices.push(totalPrice);
+
+    // Store the tier key on the listing so ruleMLScore can look it up
+    l._marketKey = key;
+  }
+
+  // Tier medians (only for groups with ≥2 listings)
+  const byTier = {};
+  for (const [key, prices] of Object.entries(tierBuckets)) {
+    if (prices.length >= 2) {
+      const v = median(prices);
+      if (v != null) byTier[key] = Math.round(v * 100) / 100;
+    }
+  }
+
+  // Grade medians (fallback)
   const byGrade = {};
-  for (const [gk, prices] of Object.entries(buckets)) {
+  for (const [gk, prices] of Object.entries(gradeBuckets)) {
     const v = median(prices);
     if (v != null) byGrade[gk] = Math.round(v * 100) / 100;
   }
 
   const overall = median(allPrices);
   return {
+    byTier,
     byGrade,
     weightedMean: overall != null ? Math.round(overall * 100) / 100 : null,
     count: allPrices.length,
@@ -180,9 +225,11 @@ export function ruleMLScore(listing, _category, rules, deals, featureWeights, ma
   // ── 4. ROI signal (0–1) — real market data takes priority ─────────────────
   let marketRoiSignal = null;
   if (marketData && totalPrice > 0) {
-    const gk = GRADE_KEY_MAP[listing?.grade || 'raw'] || 'raw';
-    // Prefer grade-specific time-weighted mean; fall back to overall weighted mean
-    const mv = marketData.byGrade?.[gk] ?? marketData.weightedMean;
+    const gk  = GRADE_KEY_MAP[listing?.grade || 'raw'] || 'raw';
+    // Prefer exact tier match → grade fallback → overall
+    const mv = (listing._marketKey && marketData.byTier?.[listing._marketKey])
+             ?? marketData.byGrade?.[gk]
+             ?? marketData.weightedMean;
     if (mv && mv > 0) {
       const realRoi = (mv - totalPrice) / totalPrice; // positive = underpriced
       listing.marketValue = Math.round(mv * 100) / 100;
