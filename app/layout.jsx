@@ -1,7 +1,7 @@
 import './globals.css';
 
 export const metadata = {
-  title: 'Bogart Makes Bands',
+  title: 'Basketball Tracker App',
   description: 'Basketball card sourcing dashboard',
 };
 

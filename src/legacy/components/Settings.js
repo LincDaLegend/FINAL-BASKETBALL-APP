@@ -97,10 +97,74 @@ export function renderSettings() {
     </div>
 
     <div class="settings-group">
-      <h3>AI scoring</h3>
+      <h3>Google Sheets sync</h3>
       <p>
-        Listings are scored with your deal history + category rules. Use the <strong>Diagnostic</strong> tab to teach the engine your preferences.
+        Transactions logged in the app are backed up to your Google Sheet via a Google Apps Script web app.
+        Deploy the script once, paste the URL here, and all new transactions will write automatically.
       </p>
+
+      <details style="margin-bottom:14px;font-size:13px">
+        <summary style="cursor:pointer;color:var(--accent);font-weight:500;margin-bottom:8px">Setup instructions (click to expand)</summary>
+        <ol style="padding-left:18px;line-height:1.9;color:var(--text-secondary);margin-top:8px">
+          <li>Open your Google Sheet → <strong>Extensions → Apps Script</strong></li>
+          <li>Delete the default code and paste the script below</li>
+          <li>Click <strong>Deploy → New deployment → Web app</strong></li>
+          <li>Set <em>Execute as</em>: <strong>Me</strong> · <em>Who has access</em>: <strong>Anyone</strong></li>
+          <li>Copy the web app URL and paste it in the field below</li>
+        </ol>
+        <pre style="margin-top:12px;padding:12px;background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--radius-md);font-size:11px;font-family:var(--mono);overflow-x:auto;white-space:pre;line-height:1.6">const SHEET_ID = '1ac1re_eTDZxA37K-bvGor1V9GAMpP9RL2qQf2-sXmk8';
+
+function doPost(e) {
+  try {
+    const d  = JSON.parse(e.postData.contents);
+    const ss = SpreadsheetApp.openById(SHEET_ID);
+    const sh = ss.getSheetByName(d.sheet);
+    if (!sh) throw new Error('Sheet not found: ' + d.sheet);
+
+    if (d.action === 'append') {
+      sh.appendRow(d.row);
+    } else if (d.action === 'updateRow') {
+      const vals = sh.getDataRange().getValues();
+      const hdrs = vals[0];
+      const mci  = hdrs.indexOf(d.matchCol);
+      if (mci &lt; 0) throw new Error('Col not found: ' + d.matchCol);
+      for (let i = 1; i &lt; vals.length; i++) {
+        if (String(vals[i][mci]) === String(d.matchVal)) {
+          (d.updates || []).forEach(({col, val}) => {
+            const ci = hdrs.indexOf(col);
+            if (ci >= 0) sh.getRange(i + 1, ci + 1).setValue(val);
+          });
+          break;
+        }
+      }
+    }
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService
+      .createTextOutput(JSON.stringify({ ok: false, error: err.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}</pre>
+      </details>
+
+      <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;max-width:600px">
+        <div class="form-group" style="flex:1;margin:0">
+          <label class="form-label">Apps Script Web App URL</label>
+          <input
+            id="gas-url-input"
+            type="text"
+            placeholder="https://script.google.com/macros/s/…/exec"
+            value="${escHtml(state.gasWriteUrl || '')}"
+          />
+        </div>
+        <button class="btn-primary" onclick="window.saveGasUrl()">Save</button>
+      </div>
+      ${state.gasWriteUrl
+        ? `<div style="font-size:12px;color:var(--green);margin-top:8px">✓ Sheets sync configured</div>`
+        : `<div style="font-size:12px;color:var(--text-muted);margin-top:8px">Not configured — transactions will only save locally.</div>`
+      }
     </div>
 
     <div class="settings-group">
@@ -113,6 +177,15 @@ export function renderSettings() {
       </div>
     </div>
   `;
+}
+
+export function saveGasUrl() {
+  const input = document.getElementById('gas-url-input');
+  const url   = (input ? input.value : state.gasWriteUrl || '').trim();
+  state.gasWriteUrl = url;
+  persistSettings();
+  state.notify = { type: url ? 'ok' : 'info', msg: url ? '✓ Sheets sync URL saved.' : 'Apps Script URL cleared.' };
+  window.renderApp();
 }
 
 export function saveEbayKey() {

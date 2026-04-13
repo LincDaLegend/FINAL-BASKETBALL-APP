@@ -39,6 +39,23 @@ export const state = {
   // Set rarity tier membership — which sets/keywords belong to each rarity class
   setRarityTiers: load('setRarityTiers', DEFAULT_SET_RARITY_TIERS),
 
+  // Business dashboard — Google Sheets cache (transient, not persisted)
+  sheetsCache: {},      // { sales: {rows,cols,error,loading}, inventory: {...}, summary: {...} }
+  salesFilter: 'all',   // status filter for Sales tab
+
+  // Transactions (primary business record — backed up to Google Sheets)
+  transactions: load('transactions', []),
+
+  // Budget tracking
+  budgets:        load('budgets', []),        // [{ id, name, amount }] — monthly amounts per category
+  budgetExpenses: load('budgetExpenses', []), // [{ id, category, amount, note, date }]
+
+  // Google Apps Script web app URL — used for sheet write operations
+  gasWriteUrl: load('gasWriteUrl', ''),
+
+  // New transaction form (transient)
+  newTxn: { date: '', client: '', itemSearch: '', selectedItem: null, soldPrice: '' },
+
   // Active subtab within the Player Tiers page (transient — not persisted)
   rulesTab: 'players',  // 'players' | 'sets'
 
@@ -91,9 +108,14 @@ export function emptyDeal() {
   };
 }
 
-export function persistDeals()     { save('deals',     state.deals);     }
-export function persistWatchlist() { save('watchlist', state.watchlist); }
-export function persistRules()  { save('rules', state.rules); }
+export function persistDeals()        { save('deals',          state.deals);          }
+export function persistWatchlist()    { save('watchlist',      state.watchlist);      }
+export function persistRules()        { save('rules',          state.rules);          }
+export function persistTransactions() { save('transactions',   state.transactions);   }
+export function persistBudgets() {
+  save('budgets',        state.budgets);
+  save('budgetExpenses', state.budgetExpenses);
+}
 export function persistSettings() {
   save('ebayKey',            state.ebayKey);
   save('ebaySecret',         state.ebaySecret);
@@ -111,6 +133,7 @@ export function persistSettings() {
   save('segments',           state.segments);
   save('playerCategories',   state.playerCategories);
   save('setRarityTiers',     state.setRarityTiers);
+  save('gasWriteUrl',        state.gasWriteUrl);
 }
 
 export function dealStats() {

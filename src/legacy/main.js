@@ -1,26 +1,27 @@
-import { state, emptyDeal, persistWatchlist } from './utils/state.js';
+import { state, persistWatchlist, persistTransactions, persistBudgets } from './utils/state.js';
 import { buildModel, loadModel, trainOnDeals, saveModel } from './utils/tfModel.js';
 import { buildEmbeddingModel } from './utils/embedding.js';
-import { startEnrichment } from './utils/enrichment.js';
 import { renderSearch, doSearch } from './components/Search.js';
-import { renderDeals, logDeal, removeDeal, clearAllDeals, exportDeals, handleXlsxFile, handleXlsxDrop, xlsxSetMapping, cancelXlsxImport, processXlsxImport, segmentEdit, segmentAddNew, segmentCancelEdit, segmentSave, segmentDelete } from './components/Deals.js';
 import { renderRules, setRulesTab, updateCatROI, addPlayer, removePlayer, addSetToTier, removeSetFromTier, resetAllConfig, setMLWeight } from './components/Rules.js';
 import {
   renderSettings, saveEbayKey, clearEbayKey,
-  updateRate, exportAllData, importDataPrompt, nukeAllData,
+  updateRate, exportAllData, importDataPrompt, nukeAllData, saveGasUrl,
 } from './components/Settings.js';
-import {
-  renderDiagnostic, startDiagnostic, diagPick, diagSkip, diagApply, diagApplyPrefs, diagDiscard, diagRunSearch,
-} from './components/Diagnostic.js';
-import { renderCycles } from './components/Cycles.js';
+import { renderBusinessSummary } from './components/BusinessSummary.js';
+import { renderSalesLog } from './components/SalesLog.js';
+import { renderInventory } from './components/Inventory.js';
+import { renderHeldOrders } from './components/HeldOrders.js';
+import { renderBudget } from './components/Budget.js';
 
 const ICONS = {
-  search:     `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>`,
-  deals:      `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h4"/></svg>`,
-  diagnostic: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11 3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>`,
-  cycles:     `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>`,
-  rules:      `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`,
-  settings:   `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`,
+  search:    `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>`,
+  deals:     `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h4"/></svg>`,
+  rules:     `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`,
+  settings:  `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v2M12 20v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M2 12h2M20 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>`,
+  summary:   `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>`,
+  sales:     `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
+  inventory: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>`,
+  held:      `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
 };
 
 const CROWN_SVG = `<svg viewBox="0 0 22 26" fill="white" xmlns="http://www.w3.org/2000/svg">
@@ -32,13 +33,20 @@ const CROWN_SVG = `<svg viewBox="0 0 22 26" fill="white" xmlns="http://www.w3.or
   <path d="M14 22L15.5 26L13 26L12 24Z"/>
 </svg>`;
 
+const ICONS_EXTRA = {
+  budget: `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>`,
+};
+Object.assign(ICONS, ICONS_EXTRA);
+
 const NAV = [
-  { id: 'search',     label: 'Search',         icon: 'search',     section: null },
-  { id: 'deals',      label: 'Deal Log',       icon: 'deals',      section: null },
-  { id: 'diagnostic', label: 'Diagnostic',     icon: 'diagnostic', section: null },
-  { id: 'cycles',     label: 'Cycles',         icon: 'cycles',     section: null },
-  { id: 'rules',      label: 'Player Tiers',   icon: 'rules',      section: 'Config' },
-  { id: 'settings',   label: 'Settings',       icon: 'settings',   section: null },
+  { id: 'search',    label: 'Search',       icon: 'search',    section: null },
+  { id: 'summary',   label: 'Summary',      icon: 'summary',   section: 'Business' },
+  { id: 'sales',     label: 'Sales',        icon: 'sales',     section: null },
+  { id: 'inventory', label: 'Inventory',    icon: 'inventory', section: null },
+  { id: 'held',      label: 'Held Orders',  icon: 'held',      section: null },
+  { id: 'budget',    label: 'Budget',       icon: 'budget',    section: null },
+  { id: 'rules',     label: 'Player Tiers', icon: 'rules',     section: 'Config' },
+  { id: 'settings',  label: 'Settings',     icon: 'settings',  section: null },
 ];
 
 function renderApp() {
@@ -49,7 +57,7 @@ function renderApp() {
     <header class="app-header">
       <div class="logo">
         <div class="logo-icon">${CROWN_SVG}</div>
-        <div class="logo-text">Bogart Makes Bands</div>
+        <div class="logo-text">Basketball Tracker App</div>
       </div>
     </header>
 
@@ -83,23 +91,69 @@ function renderApp() {
 
 function renderPage() {
   switch (state.tab) {
-    case 'search':     return renderSearch();
-    case 'deals':      return renderDeals();
-    case 'diagnostic': return renderDiagnostic();
-    case 'cycles':     return renderCycles();
-    case 'rules':      return renderRules();
-    case 'settings':   return renderSettings();
-    default:           return renderSearch();
+    case 'search':    return renderSearch();
+    case 'summary':   return renderBusinessSummary();
+    case 'sales':     return renderSalesLog();
+    case 'inventory': return renderInventory();
+    case 'held':      return renderHeldOrders();
+    case 'budget':    return renderBudget();
+    case 'rules':     return renderRules();
+    case 'settings':  return renderSettings();
+    default:          return renderSearch();
   }
 }
 
 window.renderApp = renderApp;
+
+// Map of tab → sheet key (for auto-loading on tab switch)
+const SHEET_TABS = {
+  summary:   'summary',
+  sales:     'sales',
+  inventory: 'inventory',
+  held:      'sales',   // held orders reuse sales data
+};
 
 window.setTab = (tab) => {
   state.tab    = tab;
   state.notify = null;
   renderApp();
   window.scrollTo(0, 0);
+  // Auto-load sheet data if not already cached
+  const sheetKey = SHEET_TABS[tab];
+  if (sheetKey && !state.sheetsCache[sheetKey]?.rows && !state.sheetsCache[sheetKey]?.loading) {
+    window.loadSheetTab(sheetKey);
+  }
+};
+
+// Sheet configs: key → { sheet name, optional range }
+const SHEET_CONFIG = {
+  summary:   { sheet: 'Summary 2026',   range: 'B22:J35' },
+  sales:     { sheet: 'Sales 2026',     range: '' },
+  inventory: { sheet: 'Inventory 2026', range: '' },
+};
+
+window.loadSheetTab = async (key) => {
+  const cfg = SHEET_CONFIG[key];
+  if (!cfg) return;
+  if (!state.sheetsCache) state.sheetsCache = {};
+  state.sheetsCache[key] = { ...(state.sheetsCache[key] || {}), loading: true, error: null };
+  window.renderApp();
+  try {
+    const params = new URLSearchParams({ sheet: cfg.sheet });
+    if (cfg.range) params.set('range', cfg.range);
+    const resp = await fetch(`/api/sheets?${params}`);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+    state.sheetsCache[key] = { rows: data.rows, cols: data.cols, loading: false, error: null };
+  } catch (e) {
+    state.sheetsCache[key] = { ...(state.sheetsCache[key] || {}), loading: false, error: e.message };
+  }
+  window.renderApp();
+};
+
+window.setSalesFilter = (f) => {
+  state.salesFilter = f;
+  window.renderApp();
 };
 
 window.setVerdictFilter = (v) => {
@@ -112,30 +166,202 @@ window.doSearch = doSearch;
 window.setListingType  = (v) => { state.listingType  = v; renderApp(); };
 window.setItemLocation = (v) => { state.itemLocation = v; renderApp(); };
 
-// Deals
-window.ndSet = (k, v) => { state.newDeal[k] = v; };
-window.logDeal = logDeal;
-window.removeDeal = removeDeal;
-window.clearAllDeals = clearAllDeals;
-window.clearNewDeal = () => { state.newDeal = emptyDeal(); renderApp(); };
-window.exportDeals  = exportDeals;
+// ── Transaction form ──────────────────────────────────────────────────────────
+window.txnSet = (field, val) => {
+  if (!state.newTxn) state.newTxn = {};
+  state.newTxn[field] = val;
+};
 
-// AI enrichment
-window.startEnrichment = () => startEnrichment();
+window.txnSearch = (val) => {
+  if (!state.newTxn) state.newTxn = {};
+  state.newTxn.itemSearch  = val;
+  state.newTxn.selectedItem = null;
+  window.renderApp();
+};
 
-// Segment editing
-window.segmentEdit       = segmentEdit;
-window.segmentAddNew     = segmentAddNew;
-window.segmentCancelEdit = segmentCancelEdit;
-window.segmentSave       = segmentSave;
-window.segmentDelete     = segmentDelete;
+window.txnSelectItem = (idx) => {
+  const rows = state.sheetsCache?.inventory?.rows || [];
+  const query = state.newTxn?.itemSearch || '';
+  const matches = rows.filter(r =>
+    String(r['Item Name'] || r['Item'] || '').toLowerCase().includes(query.toLowerCase())
+  ).slice(0, 8);
+  if (!matches[idx]) return;
+  state.newTxn.selectedItem = matches[idx];
+  state.newTxn.itemSearch   = matches[idx]['Item Name'] || matches[idx]['Item'] || '';
+  window.renderApp();
+  setTimeout(() => document.querySelector('input[type="number"][placeholder="0"]')?.focus(), 50);
+};
 
-// xlsx import
-window.handleXlsxFile     = (file) => handleXlsxFile(file);
-window.handleXlsxDrop     = (ev)   => handleXlsxDrop(ev);
-window.xlsxSetMapping     = (field, col) => xlsxSetMapping(field, col);
-window.cancelXlsxImport   = cancelXlsxImport;
-window.processXlsxImport  = processXlsxImport;
+window.txnClearItem = () => {
+  state.newTxn.selectedItem = null;
+  state.newTxn.itemSearch   = '';
+  window.renderApp();
+  setTimeout(() => document.getElementById('txn-item-input')?.focus(), 50);
+};
+
+window.submitTransaction = async () => {
+  const txn = state.newTxn || {};
+  const sel  = txn.selectedItem;
+  const soldPrice = parseFloat(String(txn.soldPrice || '0').replace(/[₱,]/g, '')) || 0;
+
+  if (!sel) {
+    state.txnError = 'Select an item from inventory.';
+    window.renderApp(); return;
+  }
+  if (!soldPrice) {
+    state.txnError = 'Enter a sold price.';
+    window.renderApp(); return;
+  }
+
+  state.txnError    = null;
+  state.txnSubmitting = true;
+  window.renderApp();
+
+  const itemName = sel['Item Name'] || sel['Item'] || '';
+  const cost     = parseFloat(String(sel['Cost'] || '0').replace(/[₱,]/g, '')) || 0;
+  const profit   = soldPrice - cost;
+  const date     = txn.date || new Date().toISOString().slice(0, 10);
+  const client   = (txn.client || '').trim();
+
+  const record = {
+    id:        String(Date.now()),
+    date,
+    client,
+    item:      itemName,
+    cost,
+    soldPrice,
+    profit,
+  };
+
+  // Save locally
+  if (!state.transactions) state.transactions = [];
+  state.transactions.push(record);
+  persistTransactions();
+
+  // Sync to Google Sheet if configured
+  if (state.gasWriteUrl) {
+    try {
+      // 1. Append to Sales 2026
+      await fetch('/api/sheets/write', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          gasUrl: state.gasWriteUrl,
+          action: 'append',
+          sheet:  'Sales 2026',
+          row:    [date, client, itemName, cost, soldPrice, 'Sold'],
+        }),
+      });
+      // 2. Mark item as Sold in Inventory 2026
+      await fetch('/api/sheets/write', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({
+          gasUrl:   state.gasWriteUrl,
+          action:   'updateRow',
+          sheet:    'Inventory 2026',
+          matchCol: 'Item Name',
+          matchVal: itemName,
+          updates:  [
+            { col: 'Sale Price', val: soldPrice },
+            { col: 'Status',     val: 'Sold'    },
+          ],
+        }),
+      });
+    } catch (e) {
+      console.warn('[sheets write]', e);
+    }
+  }
+
+  // Reset form
+  state.newTxn       = { date: new Date().toISOString().slice(0, 10), client: '', itemSearch: '', selectedItem: null, soldPrice: '' };
+  state.txnSubmitting = false;
+  state.notify        = { type: 'ok', msg: `Transaction logged: ${itemName}` };
+  window.renderApp();
+};
+
+window.removeTransaction = (id) => {
+  state.transactions = (state.transactions || []).filter(t => t.id !== id);
+  persistTransactions();
+  window.renderApp();
+};
+
+// Import existing sheet rows as transactions (one-time migration)
+window.importTransactionsFromSheet = () => {
+  const { rows } = state.sheetsCache?.sales || {};
+  if (!rows?.length) {
+    state.notify = { type: 'err', msg: 'No sheet data loaded — click "Load Sheet Data" first.' };
+    window.renderApp(); return;
+  }
+  const parseMoney = v => parseFloat(String(v || '0').replace(/[₱,]/g, '')) || 0;
+  const imported = rows.map((r, i) => ({
+    id:        String(Date.now() + i),
+    date:      r['Date']   || '',
+    client:    r['Buyer']  || r['Client']     || '',
+    item:      r['Item']   || r['Item Name']  || '',
+    cost:      parseMoney(r['Cost']),
+    soldPrice: parseMoney(r['Sale'] || r['Sold Price']),
+    profit:    parseMoney(r['Sale'] || r['Sold Price']) - parseMoney(r['Cost']),
+    imported:  true,
+  }));
+  state.transactions = [...imported, ...(state.transactions || [])];
+  persistTransactions();
+  state.notify = { type: 'ok', msg: `Imported ${imported.length} rows from sheet.` };
+  window.renderApp();
+};
+
+// ── Budget ────────────────────────────────────────────────────────────────────
+window.addBudget = () => {
+  const nameInput = document.getElementById('budget-cat-input');
+  const amtInput  = document.getElementById('budget-amt-input');
+  const name   = (nameInput?.value || '').trim();
+  const amount = parseFloat(amtInput?.value || '0') || 0;
+  if (!name || !amount) { return; }
+  if ((state.budgets || []).some(b => b.name === name)) {
+    state.notify = { type: 'err', msg: `Budget for "${name}" already exists.` };
+    window.renderApp(); return;
+  }
+  if (!state.budgets) state.budgets = [];
+  state.budgets.push({ id: String(Date.now()), name, amount });
+  persistBudgets();
+  if (nameInput) nameInput.value = '';
+  if (amtInput)  amtInput.value  = '';
+  window.renderApp();
+};
+
+window.removeBudget = (id) => {
+  state.budgets = (state.budgets || []).filter(b => b.id !== id);
+  persistBudgets();
+  window.renderApp();
+};
+
+window.addBudgetExpense = () => {
+  const catSel   = document.getElementById('expense-cat-select');
+  const amtInput = document.getElementById('expense-amt-input');
+  const noteInput = document.getElementById('expense-note-input');
+  const dateInput = document.getElementById('expense-date-input');
+  const category = catSel?.value || '';
+  const amount   = parseFloat(amtInput?.value || '0') || 0;
+  if (!category || !amount) return;
+  if (!state.budgetExpenses) state.budgetExpenses = [];
+  state.budgetExpenses.push({
+    id:       String(Date.now()),
+    category,
+    amount,
+    note:     (noteInput?.value || '').trim(),
+    date:     dateInput?.value || new Date().toISOString().slice(0, 10),
+  });
+  persistBudgets();
+  if (amtInput)  amtInput.value  = '';
+  if (noteInput) noteInput.value = '';
+  window.renderApp();
+};
+
+window.removeBudgetExpense = (id) => {
+  state.budgetExpenses = (state.budgetExpenses || []).filter(e => e.id !== id);
+  persistBudgets();
+  window.renderApp();
+};
 
 // Scoring config (Rules tab)
 window.setRulesTab        = setRulesTab;
@@ -243,15 +469,7 @@ window.updateRate       = updateRate;
 window.exportAllData    = exportAllData;
 window.importDataPrompt = importDataPrompt;
 window.nukeAllData      = nukeAllData;
-
-// Diagnostic
-window.startDiagnostic  = startDiagnostic;
-window.diagPick         = diagPick;
-window.diagSkip         = diagSkip;
-window.diagApply        = diagApply;
-window.diagApplyPrefs   = diagApplyPrefs;
-window.diagDiscard      = diagDiscard;
-window.diagRunSearch    = diagRunSearch;
+window.saveGasUrl       = saveGasUrl;
 
 // Bid popup
 window.openBidPopup = (url) => {
@@ -264,43 +482,6 @@ window.openBidPopup = (url) => {
   document.body.removeChild(a);
 };
 
-// Search suggestions
-window.runSuggestedSearch = (query) => {
-  state.query = query;
-  window.setTab('search');
-  setTimeout(() => {
-    const input = document.getElementById('q-input');
-    if (input) input.value = query;
-    window.doSearch();
-  }, 50);
-};
-window.fetchSuggestions = async () => {
-  state.suggestLoading = true;
-  window.renderApp();
-  try {
-    const resp = await fetch('/api/suggest-searches', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        deals:    state.deals,
-        weights:  state.mlFeatureWeights || {},
-        rules:    state.rules,
-        segments: state.segments || [],
-      }),
-    });
-    if (resp.ok) {
-      const data = await resp.json();
-      state.suggestedSearches = data.suggestions || [];
-      state.suggestTrendNote  = data.trendNote   || '';
-      const { persistSettings } = await import('./utils/state.js');
-      persistSettings();
-    }
-  } catch (e) {
-    console.warn('[suggest]', e);
-  }
-  state.suggestLoading = false;
-  window.renderApp();
-};
 
 // Debounce renderApp — batches rapid calls into a single RAF paint
 let _rafPending = false;

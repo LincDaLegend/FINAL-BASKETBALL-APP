@@ -61,7 +61,7 @@ export function renderSearch() {
         </div>
       ` : ''}
 
-      ${!state.loading && state.results.length === 0 && !state.query ? renderSuggestionsPanel() : ''}
+      ${!state.loading && state.results.length === 0 && !state.query ? renderEmptySearch() : ''}
 
       ${renderResults()}
     </div>
@@ -173,61 +173,13 @@ function renderResults() {
   }).join('');
 }
 
-function renderSuggestionsPanel() {
-  const suggestions = state.suggestedSearches || [];
-  const loading     = state.suggestLoading;
-  const trendNote   = state.suggestTrendNote || '';
-
-  const TYPE_BADGE = {
-    'repeat-winner': 'badge-buy',
-    'grade-up':      'badge-consider',
-    'price-adjust':  'badge-blue',
-    'avoid-pattern': 'badge-pink',
-  };
-
+function renderEmptySearch() {
   return `
-    <div class="suggest-panel">
-      <div class="suggest-header">
-        <div>
-          <div class="suggest-title">What should I search?</div>
-          ${trendNote ? `<div class="suggest-trend">${escHtml(trendNote)}</div>` : ''}
-        </div>
-        <button class="btn-ghost btn-sm" onclick="window.fetchSuggestions()" ${loading ? 'disabled' : ''}>
-          ${loading
-            ? `<span class="dots" style="display:inline-flex;gap:3px"><div class="dot"></div><div class="dot"></div><div class="dot"></div></span>`
-            : suggestions.length ? 'Refresh' : 'Get AI suggestions'}
-        </button>
-      </div>
-
-      ${suggestions.length === 0 && !loading ? `
-        <div style="font-size:12px;color:var(--text-muted);padding:8px 0">
-          Click "Get AI suggestions" — Claude will analyse your deal history and current market trends to recommend what to source next.
-        </div>
-      ` : ''}
-
-      ${suggestions.length > 0 ? `
-        <div class="suggest-grid">
-          ${suggestions.map(s => `
-            <div class="suggest-card" onclick="window.runSuggestedSearch(${JSON.stringify(s.query)})">
-              <div class="suggest-card-top">
-                <span class="suggest-label">${escHtml(s.label)}</span>
-                <span class="badge ${TYPE_BADGE[s.type] || 'badge-gray'}">${escHtml(s.type || '')}</span>
-              </div>
-              <div class="suggest-reason">${escHtml(s.reason || '')}</div>
-              ${s.maxBuyPrice ? `<div class="suggest-max-buy">max buy: <strong>$${s.maxBuyPrice}</strong></div>` : ''}
-              <div class="suggest-query">${escHtml(s.query)}</div>
-            </div>
-          `).join('')}
-        </div>
-      ` : ''}
-    </div>
-
-    <div class="empty-state" style="padding-top:1rem">
+    <div class="empty-state">
       <div class="empty-icon">🏀</div>
       <h3>Ready to source</h3>
-      <p>Enter a player name above, or use an AI suggestion to pull live eBay listings.</p>
-    </div>
-  `;
+      <p>Enter a player name above to pull live eBay listings.</p>
+    </div>`;
 }
 
 
