@@ -42,7 +42,7 @@ export async function GET(req) {
   const appId = req.headers.get('x-ebay-key') || process.env.EBAY_APP_ID;
 
   if (!appId || !q) {
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0 });
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: !appId ? 'no appId' : 'no query' });
   }
 
   const url = new URL('https://svcs.ebay.com/services/search/FindingService/v1');
@@ -51,9 +51,6 @@ export async function GET(req) {
   url.searchParams.set('SECURITY-APPNAME',       appId);
   url.searchParams.set('RESPONSE-DATA-FORMAT',   'JSON');
   url.searchParams.set('keywords',               q);
-  url.searchParams.set('categoryId',             '212');
-  url.searchParams.set('itemFilter(0).name',     'SoldItemsOnly');
-  url.searchParams.set('itemFilter(0).value',    'true');
   url.searchParams.set('sortOrder',              'EndTimeSoonest');
   url.searchParams.set('paginationInput.entriesPerPage', '50');
 
@@ -61,16 +58,24 @@ export async function GET(req) {
   try {
     resp = await fetch(url.toString(), { cache: 'no-store' });
   } catch (e) {
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: e.message });
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `fetch failed: ${e.message}` });
   }
 
   if (!resp.ok) {
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0 });
+    const text = await resp.text().catch(() => '');
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `eBay ${resp.status}: ${text.slice(0, 200)}` });
   }
 
   let data;
-  try { data = await resp.json(); } catch {
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0 });
+  try { data = await resp.json(); } catch (e) {
+    const raw = await resp.text().catch(() => '');
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `JSON parse failed: ${raw.slice(0, 200)}` });
+  }
+
+  const ack = data?.findCompletedItemsResponse?.[0]?.ack?.[0];
+  if (ack && ack !== 'Success' && ack !== 'Warning') {
+    const errMsg = data?.findCompletedItemsResponse?.[0]?.errorMessage?.[0]?.error?.[0]?.message?.[0] || ack;
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `eBay ack=${ack}: ${errMsg}` });
   }
 
   const items = data?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.item || [];
