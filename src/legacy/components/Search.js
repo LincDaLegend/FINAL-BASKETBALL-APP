@@ -189,7 +189,7 @@ function renderResults() {
             : `<div style="font-size:10px;color:var(--green)">free shipping</div>`}
           <div class="price-php">${phpPrice}</div>
           <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
-            <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px">Market · ${r.grade}${r._marketKey ? ` · ${r._marketKey.split('__')[1]}` : ''}</div>
+            <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px">Market · ${r.grade}${r._marketLabel ? ` · ${r._marketLabel}` : ''}</div>
             ${r.marketValue != null ? (() => {
               const roi = r.realRoiPct ?? 0;
               const cls = roi >= 20 ? 'badge-buy' : roi >= 0 ? 'badge-consider' : 'badge-skip';

@@ -103,26 +103,67 @@ function n(val, fallback = 0) {
   return Number.isFinite(x) ? x : fallback;
 }
 
-// Classify a listing title into a parallel tier for grouping purposes.
-// Returns a short string key used as part of the market-price bucket key.
-function parallelTier(title) {
+// Extract the 4-digit season start year from a title (e.g. "2024-25" → "2024").
+function extractYear(title) {
+  const m = String(title || '').match(/\b(20\d{2})(?:-\d{2})?\b/);
+  return m ? m[1] : 'unknown';
+}
+
+// Extract the specific parallel name from a title.
+// Ordered from most-specific multi-word patterns down to single-word colours.
+const PARALLEL_PATTERNS = [
+  // Named multi-word parallels
+  [/GOLD ICE/,        'gold-ice'],
+  [/BLUE ICE/,        'blue-ice'],
+  [/RED ICE/,         'red-ice'],
+  [/SILVER ICE/,      'silver-ice'],
+  [/WHITE ICE/,       'white-ice'],
+  [/BLUE SHIMMER/,    'blue-shimmer'],
+  [/GOLD SHIMMER/,    'gold-shimmer'],
+  [/RED SHIMMER/,     'red-shimmer'],
+  [/BLUE WAVE/,       'blue-wave'],
+  [/GREEN WAVE/,      'green-wave'],
+  [/RED WAVE/,        'red-wave'],
+  [/DISCO DAZZLE/,    'disco-dazzle'],
+  [/TIGER STRIPE/,    'tiger-stripe'],
+  [/CRACKED ICE/,     'cracked-ice'],
+  [/KABOOM/,          'kaboom'],
+  [/LOGOMAN/,         'logoman'],
+  [/PATCH AUTO|RPA/,  'rpa'],
+  [/GOLD PRIZM/,      'gold-prizm'],
+  [/RED PRIZM/,       'red-prizm'],
+  [/BLUE PRIZM/,      'blue-prizm'],
+  [/SILVER PRIZM/,    'silver-prizm'],
+  [/HYPER PRIZM/,     'hyper-prizm'],
+  [/NEON GREEN/,      'neon-green'],
+  [/NEON BLUE/,       'neon-blue'],
+  // Numbered print runs (treated as their own parallel type)
+  [/\b1\/1\b|ONE OF ONE/, '1of1'],
+  [/\/[2-9]\b/,       'ultra-low'],
+  [/\/[1-2]\d\b/,     'low-print'],
+  [/\/\d+/,           'numbered'],
+  // Autos (non-patch)
+  [/\bAUTO\b|\bAU\b/, 'auto'],
+  // Single-word colour parallels
+  [/\bGOLD\b/,        'gold'],
+  [/\bRED\b/,         'red'],
+  [/\bBLUE\b/,        'blue'],
+  [/\bGREEN\b/,       'green'],
+  [/\bPURPLE\b/,      'purple'],
+  [/\bORANGE\b/,      'orange'],
+  [/\bPINK\b/,        'pink'],
+  [/\bSILVER\b/,      'silver'],
+  [/\bHOLO\b/,        'holo'],
+  [/\bREFRACTOR\b/,   'refractor'],
+  [/\bPRIZM\b/,       'prizm-base'],
+  [/\bOPTIC\b/,       'optic-base'],
+];
+
+function extractParallel(title) {
   const t = String(title || '').toUpperCase();
-  if (/\b1\/1\b/.test(t) || t.includes('ONE OF ONE')) return '1of1';
-  if (/\/[2-9]\b/.test(t))                             return 'ultra-low';
-  if (/\/(1[0-9]|2[0-5])\b/.test(t))                  return 'low-print';
-  if (/\/\d+/.test(t))                                 return 'numbered';
-  if (t.includes('LOGOMAN') || t.includes('PATCH AUTO') || t.includes('RPA')) return 'rpa';
-  if (t.includes('AUTO') || t.includes(' AU '))        return 'auto';
-  if (t.includes('HYPER') || t.includes('DISCO') || t.includes('KABOOM')) return 'premium-parallel';
-  if (t.includes('GOLD'))                              return 'gold';
-  if (t.includes('RED'))                               return 'red';
-  if (t.includes('BLUE'))                              return 'blue';
-  if (t.includes('GREEN'))                             return 'green';
-  if (t.includes('PURPLE') || t.includes('VIOLET'))   return 'purple';
-  if (t.includes('ORANGE'))                            return 'orange';
-  if (t.includes('PINK'))                              return 'pink';
-  if (t.includes('SILVER') || t.includes('HOLO'))     return 'silver';
-  if (t.includes('PRIZM') || t.includes('REFRACTOR') || t.includes('OPTIC')) return 'base-chrome';
+  for (const [pattern, label] of PARALLEL_PATTERNS) {
+    if (pattern.test(t)) return label;
+  }
   return 'base';
 }
 
@@ -148,9 +189,10 @@ export function computeMarketFromListings(listings) {
     const totalPrice = (l.price || 0) + (l.shippingCost || 0);
     if (totalPrice <= 0) continue;
 
-    const gk  = GRADE_KEY_MAP[l.grade || 'raw'] || 'raw';
-    const pt  = parallelTier(l.title || '');
-    const key = `${gk}__${pt}`;
+    const gk       = GRADE_KEY_MAP[l.grade || 'raw'] || 'raw';
+    const year     = extractYear(l.title || '');
+    const parallel = extractParallel(l.title || '');
+    const key      = `${year}__${gk}__${parallel}`;
 
     if (!tierBuckets[key])   tierBuckets[key]   = [];
     if (!gradeBuckets[gk])   gradeBuckets[gk]   = [];
@@ -158,8 +200,9 @@ export function computeMarketFromListings(listings) {
     gradeBuckets[gk].push(totalPrice);
     allPrices.push(totalPrice);
 
-    // Store the tier key on the listing so ruleMLScore can look it up
+    // Store key on listing so ruleMLScore can look it up
     l._marketKey = key;
+    l._marketLabel = `${year} · ${parallel}`;
   }
 
   // Tier medians (only for groups with ≥2 listings)
