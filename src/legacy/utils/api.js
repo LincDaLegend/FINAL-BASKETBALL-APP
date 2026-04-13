@@ -203,8 +203,7 @@ export function computeMarketFromListings(listings) {
     for (const e of clean) {
       const timeW    = Math.exp(-DECAY * e.daysOld);
       const centralW = 1 / (1 + Math.abs(e.price - simpleMean));
-      const cnPenalty = e.isCN ? 0.35 : 1;   // CN listings count 35% (65% reduction)
-      const w        = timeW * centralW * cnPenalty;
+      const w        = timeW * centralW;
       sumW  += w;
       sumWP += w * e.price;
     }
