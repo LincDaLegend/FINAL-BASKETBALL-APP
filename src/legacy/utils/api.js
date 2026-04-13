@@ -103,24 +103,45 @@ function n(val, fallback = 0) {
   return Number.isFinite(x) ? x : fallback;
 }
 
-// Fetch recent sold prices from eBay completed listings (grade-bucketed medians)
-// Returns { byGrade: { raw, psa10, psa9, ... }, median, count } or null on failure
-export async function fetchMarketValue(query) {
-  const headers = {};
-  if (state.ebayKey) headers['x-ebay-key'] = state.ebayKey;
-  try {
-    const resp = await fetch(`/api/ebay/sold?q=${encodeURIComponent(query)}`, { headers });
-    if (!resp.ok) {
-      console.warn('[sold] HTTP error:', resp.status, resp.statusText);
-      return null;
-    }
-    const data = await resp.json();
-    console.log('[sold] response:', data);
-    return (data?.count > 0) ? data : null;
-  } catch (e) {
-    console.warn('[sold] fetch threw:', e.message);
-    return null;
+// Compute market price reference from the already-fetched live listings.
+// Groups by grade tier and returns the median price per tier.
+// This avoids a separate API call and is immune to Finding API rate limits.
+export function computeMarketFromListings(listings) {
+  if (!listings?.length) return null;
+
+  const buckets = {};
+  const allPrices = [];
+
+  for (const l of listings) {
+    const totalPrice = (l.price || 0) + (l.shippingCost || 0);
+    if (totalPrice <= 0) continue;
+    const gk = GRADE_KEY_MAP[l.grade || 'raw'] || 'raw';
+    if (!buckets[gk]) buckets[gk] = [];
+    buckets[gk].push(totalPrice);
+    allPrices.push(totalPrice);
   }
+
+  const median = (arr) => {
+    if (!arr.length) return null;
+    const s = [...arr].sort((a, b) => a - b);
+    const mid = Math.floor(s.length / 2);
+    return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+  };
+
+  const byGrade = {};
+  for (const [gk, prices] of Object.entries(buckets)) {
+    const v = median(prices);
+    if (v != null) byGrade[gk] = Math.round(v * 100) / 100;
+  }
+
+  const overall = median(allPrices);
+  return {
+    byGrade,
+    weightedMean: overall != null ? Math.round(overall * 100) / 100 : null,
+    count: allPrices.length,
+    trendDir: 'stable',
+    trend: null,
+  };
 }
 
 // Map listing.grade strings → sold-data grade keys
