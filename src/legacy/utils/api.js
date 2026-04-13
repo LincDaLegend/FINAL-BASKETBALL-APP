@@ -170,10 +170,25 @@ function extractParallel(title) {
 // Compute market price reference from the already-fetched live listings.
 // Groups by (grade + parallel tier) for accurate like-for-like comparison.
 // Falls back to grade-only group when a tier group has fewer than 2 items.
-// Placeholder — eBay Marketplace Insights requires special scope approval.
-// Always returns null so doSearch falls back to computeMarketFromListings.
-export async function fetchSoldMarketValue(_query) {
-  return null;
+// Fetch sold prices via eBay Marketplace Insights API.
+// Uses user OAuth token (buy.marketplace.insights scope) if available,
+// falls back to client credentials. Returns null on any failure so
+// doSearch can fall back to computeMarketFromListings.
+export async function fetchSoldMarketValue(query) {
+  const headers = {};
+  if (state.ebayKey)    headers['x-ebay-key']    = state.ebayKey;
+  if (state.ebaySecret) headers['x-ebay-secret']  = state.ebaySecret;
+  if (state.ebayToken)  headers['x-ebay-token']   = state.ebayToken;
+  if (!state.ebayToken && !state.ebayKey) return null;
+  try {
+    const resp = await fetch(`/api/ebay/sold?q=${encodeURIComponent(query)}`, { headers });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (data?.error) console.warn('[sold]', data.error);
+    return (data?.count > 0) ? data : null;
+  } catch {
+    return null;
+  }
 }
 
 export function computeMarketFromListings(listings) {

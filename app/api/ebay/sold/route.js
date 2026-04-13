@@ -76,16 +76,24 @@ export async function GET(req) {
   const q      = (searchParams.get('q') || '').trim();
   const appId  = req.headers.get('x-ebay-key')    || process.env.EBAY_APP_ID;
   const secret = req.headers.get('x-ebay-secret') || process.env.EBAY_CLIENT_SECRET;
+  // User OAuth token takes priority — has buy.marketplace.insights scope if granted
+  const userToken = req.headers.get('x-ebay-token') || null;
 
-  if (!appId || !secret || !q) {
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: 'missing credentials or query' });
+  if (!q) {
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: 'no query' });
   }
 
   let token;
-  try {
-    token = await getAccessToken(appId, secret);
-  } catch (e) {
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `auth: ${e.message}` });
+  if (userToken) {
+    token = userToken;
+  } else if (appId && secret) {
+    try {
+      token = await getAccessToken(appId, secret);
+    } catch (e) {
+      return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `auth: ${e.message}` });
+    }
+  } else {
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: 'no credentials' });
   }
 
   const params = new URLSearchParams({

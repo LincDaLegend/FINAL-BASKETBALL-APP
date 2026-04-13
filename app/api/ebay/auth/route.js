@@ -19,6 +19,7 @@ export async function GET(req) {
   const scopes = [
     'https://api.ebay.com/oauth/api_scope',
     'https://api.ebay.com/oauth/api_scope/commerce.identity.readonly',
+    'https://api.ebay.com/oauth/api_scope/buy.marketplace.insights',
   ];
 
   // Encode credentials in the state param so callback can read them without relying on cookies
