@@ -25,6 +25,7 @@ export const state = {
   results: [],
   loading: false,
   verdictFilter: '',
+  searchSort: 'score',  // 'score' | 'price_asc' | 'price_desc' | 'ending'
   notify: null,
 
   // Deals (ML training data)

@@ -161,6 +161,11 @@ window.setVerdictFilter = (v) => {
   renderApp();
 };
 
+window.setSearchSort = (v) => {
+  state.searchSort = v;
+  renderApp();
+};
+
 // Search
 window.doSearch = doSearch;
 window.setListingType  = (v) => { state.listingType  = v; renderApp(); };

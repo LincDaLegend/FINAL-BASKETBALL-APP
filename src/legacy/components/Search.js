@@ -1,5 +1,5 @@
 import { state } from '../utils/state.js';
-import { searchEbay, ruleMLScore, scoreVerdict, toPhp, getPlayerCategory } from '../utils/api.js';
+import { searchEbay, fetchMarketValue, ruleMLScore, scoreVerdict, toPhp, getPlayerCategory } from '../utils/api.js';
 import { extractFeatures, topFeatures } from '../utils/ml.js';
 import { CAT_BADGE_CLASS, CAT_LABEL, DEFAULT_RULES, DEFAULT_PLAYER_CATEGORIES, SAMPLE_DEALS } from '../utils/constants.js';
 
@@ -44,12 +44,20 @@ export function renderSearch() {
     ${!state.ebayKey && !state.notify ? renderNotify({ type: 'info', msg: 'Add your eBay API key in Settings to enable search.' }) : ''}
 
     ${state.results.length > 0 ? `
-      <div class="pill-row">
-        ${['', 'buy now', 'consider', 'skip'].map(v => `
-          <button class="pill ${state.verdictFilter === v ? 'active' : ''}" onclick="window.setVerdictFilter('${v}')">
-            ${v || 'all results'} ${v ? `(${state.results.filter(r => scoreVerdict(r.aiScore || 0).label === v).length})` : `(${state.results.length})`}
-          </button>
-        `).join('')}
+      <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:4px">
+        <div class="pill-row" style="margin-bottom:0">
+          ${['', 'buy now', 'consider', 'skip'].map(v => `
+            <button class="pill ${state.verdictFilter === v ? 'active' : ''}" onclick="window.setVerdictFilter('${v}')">
+              ${v || 'all results'} ${v ? `(${state.results.filter(r => scoreVerdict(r.aiScore || 0).label === v).length})` : `(${state.results.length})`}
+            </button>
+          `).join('')}
+        </div>
+        <div style="display:flex;gap:4px;align-items:center">
+          <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-right:4px">Sort</span>
+          ${[['score','Deal Score'],['price_asc','Price ↑'],['price_desc','Price ↓'],['ending','Ending Soon']].map(([v,l]) => `
+            <button class="pill ${(state.searchSort||'score') === v ? 'active' : ''}" onclick="window.setSearchSort('${v}')">${l}</button>
+          `).join('')}
+        </div>
       </div>
     ` : ''}
 
@@ -89,7 +97,20 @@ function renderResults() {
 
   if (filtered.length === 0) return `<div class="empty-state"><p>No ${state.verdictFilter} listings found.</p></div>`;
 
-  return filtered.map(r => {
+  const sort = state.searchSort || 'score';
+  const sorted = [...filtered].sort((a, b) => {
+    if (sort === 'price_asc')  return (a.price + (a.shippingCost||0)) - (b.price + (b.shippingCost||0));
+    if (sort === 'price_desc') return (b.price + (b.shippingCost||0)) - (a.price + (a.shippingCost||0));
+    if (sort === 'ending') {
+      const aMs = a.endTime ? new Date(a.endTime) - Date.now() : Infinity;
+      const bMs = b.endTime ? new Date(b.endTime) - Date.now() : Infinity;
+      return aMs - bMs;
+    }
+    // 'score' — default: highest score first
+    return (b.aiScore || 0) - (a.aiScore || 0);
+  });
+
+  return sorted.map(r => {
     const score   = r.aiScore || 0;
     const verdict = scoreVerdict(score).label;
     const vCls    = verdict === 'buy now' ? 'badge-buy' : verdict === 'consider' ? 'badge-consider' : 'badge-skip';
@@ -167,6 +188,15 @@ function renderResults() {
             ? `<div style="font-size:10px;color:var(--text-muted)">$${r.price.toFixed(2)} + $${r.shippingCost.toFixed(2)} ship</div>`
             : `<div style="font-size:10px;color:var(--green)">free shipping</div>`}
           <div class="price-php">${phpPrice}</div>
+          ${r.marketValue != null ? (() => {
+            const roi = r.realRoiPct ?? 0;
+            const cls = roi >= 20 ? 'badge-buy' : roi >= 0 ? 'badge-consider' : 'badge-skip';
+            const sign = roi >= 0 ? '+' : '';
+            return `<div style="margin-top:6px">
+              <div style="font-size:10px;color:var(--text-muted);margin-bottom:3px">Market ~$${r.marketValue.toFixed(0)}</div>
+              <span class="badge ${cls}">${sign}${roi}% vs mkt</span>
+            </div>`;
+          })() : ''}
         </div>
       </div>
     `;
@@ -199,7 +229,11 @@ export async function doSearch() {
   window.renderApp();
 
   try {
-    const listings = await searchEbay(state.query, '', state.listingType, state.itemLocation);
+    // Fetch listings and sold market data in parallel
+    const [listings, marketData] = await Promise.all([
+      searchEbay(state.query, '', state.listingType, state.itemLocation),
+      fetchMarketValue(state.query),
+    ]);
 
     if (!listings.length) {
       state.loading = false;
@@ -208,20 +242,20 @@ export async function doSearch() {
       return;
     }
 
-    // Filter to listings that actually contain every word of the query in the title
-    // This removes eBay's "related" results that don't match what was searched
+    // Filter to listings that actually contain every word of the query
     const queryWords = state.query.toUpperCase().split(/\s+/).filter(Boolean);
     const relevant = listings.filter(l =>
       queryWords.every(w => l.title.toUpperCase().includes(w))
     );
 
-    const _rules = state.rules || DEFAULT_RULES;
-    const _deals = state.deals || SAMPLE_DEALS;
+    const _rules   = state.rules || DEFAULT_RULES;
+    const _deals   = state.deals || SAMPLE_DEALS;
     const _weights = state.mlFeatureWeights || null;
     if (!state.playerCategories) state.playerCategories = DEFAULT_PLAYER_CATEGORIES;
+
     relevant.forEach(l => {
       try {
-        l.aiScore = ruleMLScore(l, null, _rules, _deals, _weights);
+        l.aiScore = ruleMLScore(l, null, _rules, _deals, _weights, marketData);
         if (!Number.isFinite(l.aiScore)) l.aiScore = 0;
       } catch (err) {
         console.error('[score]', err.message, l.title);
@@ -229,7 +263,12 @@ export async function doSearch() {
       }
     });
 
-    state.results = [...relevant].sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));
+    // Remove listings priced >25% above market value (only when we have enough sold data)
+    const filtered = (marketData?.count >= 3)
+      ? relevant.filter(l => l.realRoiPct === undefined || l.realRoiPct >= -25)
+      : relevant;
+
+    state.results = [...filtered].sort((a, b) => (b.aiScore || 0) - (a.aiScore || 0));
     state.loading = false;
     window.renderApp();
   } catch (e) {

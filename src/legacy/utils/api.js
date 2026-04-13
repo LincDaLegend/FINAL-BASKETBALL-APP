@@ -103,9 +103,37 @@ function n(val, fallback = 0) {
   return Number.isFinite(x) ? x : fallback;
 }
 
-export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
+// Fetch recent sold prices from eBay completed listings (grade-bucketed medians)
+// Returns { byGrade: { raw, psa10, psa9, ... }, median, count } or null on failure
+export async function fetchMarketValue(query) {
+  const headers = {};
+  if (state.ebayKey) headers['x-ebay-key'] = state.ebayKey;
+  try {
+    const resp = await fetch(`/api/ebay/sold?q=${encodeURIComponent(query)}`, { headers });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    return (data?.count > 0) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+// Map listing.grade strings → sold-data grade keys
+const GRADE_KEY_MAP = {
+  'PSA 10':  'psa10',
+  'BGS 9.5': 'bgs9.5',
+  'PSA 9':   'psa9',
+  'PSA 8':   'psa8',
+  'BGS 9':   'bgs9',
+  'SGC 10':  'sgc10',
+  'SGC 9':   'sgc9',
+  'raw':     'raw',
+};
+
+export function ruleMLScore(listing, _category, rules, deals, featureWeights, marketData) {
   const title = String(listing?.title || '');
   const price = Math.max(0, n(listing?.price, 0));
+  const totalPrice = price + Math.max(0, n(listing?.shippingCost, 0));
 
   // ── 1. Player tier ─────────────────────────────────────────────────────────
   const cat = getPlayerCategory(title, state.playerCategories);
@@ -123,7 +151,20 @@ export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
         catDeals.reduce((s, d) => s + n(d.roi, 0), 0) / catDeals.length / 100))
     : 1.20;
 
-  // ── 4. ROI signal (0–1) ────────────────────────────────────────────────────
+  // ── 4. ROI signal (0–1) — real market data takes priority ─────────────────
+  let marketRoiSignal = null;
+  if (marketData && totalPrice > 0) {
+    const gk = GRADE_KEY_MAP[listing?.grade || 'raw'] || 'raw';
+    const mv = marketData.byGrade?.[gk] ?? marketData.median;
+    if (mv && mv > 0) {
+      const realRoi = (mv - totalPrice) / totalPrice; // positive = underpriced
+      listing.marketValue = Math.round(mv * 100) / 100;
+      listing.realRoiPct  = Math.round(realRoi * 100);
+      // Signal 0–1: scales from 0% upside (signal=0) to 50%+ upside (signal=1)
+      marketRoiSignal = Math.min(1, Math.max(0, realRoi / 0.50));
+    }
+  }
+
   const roi      = price > 0 ? (mult - 1) * 100 : 20;
   const roiScore = Math.min(1, Math.max(0, roi / minROI));
 
@@ -166,7 +207,7 @@ export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
   }
 
   // ── 10. Rule composite (suitability + roi + boosts) ────────────────────────
-  const roiW   = Math.min(1, Math.max(0, n(state.mlWeights?.roi, 0.6)));
+  const roiW    = Math.min(1, Math.max(0, n(state.mlWeights?.roi, 0.6)));
   const ruleRaw = suitability * 0.42
                 + roiScore   * (0.50 * roiW / 0.6)
                 + mlBoost
@@ -180,11 +221,29 @@ export function ruleMLScore(listing, _category, rules, deals, featureWeights) {
   const embScore = listingEmbScore(title, state.embModel); // 0–1 or null
 
   // ── 13. Blend ──────────────────────────────────────────────────────────────
-  const blended = embScore !== null
-    ? ruleRaw * 0.40 + featureScore * 0.25 + embScore * 0.18 + rarityScore * 0.17
-    : ruleRaw * 0.45 + featureScore * 0.33 + rarityScore * 0.22;
+  let blended;
+  if (marketRoiSignal !== null) {
+    // Market-data path: real ROI is dominant (45%). Aesthetic + rarity + features fill the rest.
+    blended = marketRoiSignal * 0.45   // how much below market price it is
+            + suitability    * 0.22    // player-tier desirability
+            + rarityScore    * 0.18    // set/print-run scarcity
+            + featureScore   * 0.10    // card features (grade, auto, patch…)
+            + aestheticBoost           // small ±0.05 visual boost
+            + mlBoost;                 // deal-history context
+  } else {
+    // Rule-only path (no sold data): fall back to original blend
+    blended = embScore !== null
+      ? ruleRaw * 0.40 + featureScore * 0.25 + embScore * 0.18 + rarityScore * 0.17
+      : ruleRaw * 0.45 + featureScore * 0.33 + rarityScore * 0.22;
+  }
 
-  return Math.min(100, Math.max(0, Math.round(n(blended, 0) * 100)));
+  const rawScore = Math.min(100, Math.max(0, Math.round(n(blended, 0) * 100)));
+
+  // Cap listings that are at or above market value into skip territory
+  if (listing.realRoiPct !== undefined && listing.realRoiPct < 0) {
+    return Math.min(rawScore, 28);
+  }
+  return rawScore;
 }
 
 export function scoreVerdict(score) {
