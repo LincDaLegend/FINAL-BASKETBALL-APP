@@ -110,10 +110,15 @@ export async function fetchMarketValue(query) {
   if (state.ebayKey) headers['x-ebay-key'] = state.ebayKey;
   try {
     const resp = await fetch(`/api/ebay/sold?q=${encodeURIComponent(query)}`, { headers });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      console.warn('[sold] HTTP error:', resp.status, resp.statusText);
+      return null;
+    }
     const data = await resp.json();
+    console.log('[sold] response:', data);
     return (data?.count > 0) ? data : null;
-  } catch {
+  } catch (e) {
+    console.warn('[sold] fetch threw:', e.message);
     return null;
   }
 }
