@@ -170,18 +170,42 @@ function extractParallel(title) {
 // Compute market price reference from the already-fetched live listings.
 // Groups by (grade + parallel tier) for accurate like-for-like comparison.
 // Falls back to grade-only group when a tier group has fewer than 2 items.
-// Fetch sold prices via eBay Finding API (findCompletedItems).
-// Falls back to null so doSearch uses live-listing prices instead.
+// Fetch market prices from SportsCardsPro API.
+// Returns byGrade prices keyed to our grade system, or null on failure.
 export async function fetchSoldMarketValue(query) {
-  if (!state.ebayKey) return null;
-  const headers = { 'x-ebay-key': state.ebayKey };
+  if (!state.scpToken) return null;
   try {
-    const resp = await fetch(`/api/ebay/sold?q=${encodeURIComponent(query)}`, { headers });
+    const resp = await fetch(`/api/sportscardspro?q=${encodeURIComponent(query)}`, {
+      headers: { 'x-scp-token': state.scpToken },
+    });
     if (!resp.ok) return null;
     const data = await resp.json();
-    if (data?.error) console.warn('[sold]', data.error);
-    return (data?.count > 0) ? data : null;
-  } catch {
+    if (data?.status !== 'success') {
+      console.warn('[scp]', data?.error);
+      return null;
+    }
+    // Remap bgs9_5 → bgs9.5 to match GRADE_KEY_MAP
+    const byGrade = { ...data.byGrade };
+    if (byGrade.bgs9_5 != null) { byGrade['bgs9.5'] = byGrade.bgs9_5; delete byGrade.bgs9_5; }
+
+    // Filter out null values
+    for (const k of Object.keys(byGrade)) {
+      if (byGrade[k] == null) delete byGrade[k];
+    }
+
+    if (!Object.keys(byGrade).length) return null;
+
+    return {
+      byGrade,
+      weightedMean: byGrade.raw ?? byGrade.psa9 ?? Object.values(byGrade)[0],
+      count:        1,
+      trendDir:     'stable',
+      trend:        null,
+      source:       'sportscardspro',
+      productName:  data.productName,
+    };
+  } catch (e) {
+    console.warn('[scp] error:', e.message);
     return null;
   }
 }

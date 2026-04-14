@@ -5,7 +5,7 @@ import { renderSearch, doSearch } from './components/Search.js';
 import { renderRules, setRulesTab, updateCatROI, addPlayer, removePlayer, addSetToTier, removeSetFromTier, resetAllConfig, setMLWeight } from './components/Rules.js';
 import {
   renderSettings, saveEbayKey, clearEbayKey,
-  updateRate, exportAllData, importDataPrompt, nukeAllData, saveGasUrl,
+  updateRate, exportAllData, importDataPrompt, nukeAllData, saveGasUrl, saveScpToken,
 } from './components/Settings.js';
 import { renderBusinessSummary } from './components/BusinessSummary.js';
 import { renderSalesLog } from './components/SalesLog.js';
@@ -475,6 +475,7 @@ window.exportAllData    = exportAllData;
 window.importDataPrompt = importDataPrompt;
 window.nukeAllData      = nukeAllData;
 window.saveGasUrl       = saveGasUrl;
+window.saveScpToken     = saveScpToken;
 
 // Bid popup
 window.openBidPopup = (url) => {

@@ -53,6 +53,7 @@ export const state = {
 
   // Google Apps Script web app URL — used for sheet write operations
   gasWriteUrl: load('gasWriteUrl', ''),
+  scpToken:    load('scpToken', ''),
 
   // New transaction form (transient)
   newTxn: { date: '', client: '', itemSearch: '', selectedItem: null, soldPrice: '' },
@@ -135,6 +136,7 @@ export function persistSettings() {
   save('playerCategories',   state.playerCategories);
   save('setRarityTiers',     state.setRarityTiers);
   save('gasWriteUrl',        state.gasWriteUrl);
+  save('scpToken',           state.scpToken);
 }
 
 export function dealStats() {

@@ -168,6 +168,31 @@ function doPost(e) {
     </div>
 
     <div class="settings-group">
+      <h3>SportsCardsPro API</h3>
+      <p>
+        Enables accurate grade-specific market prices (raw, PSA 10, PSA 9, etc.) from
+        SportsCardsPro. Find your token at
+        <strong>sportscardspro.com → My Account → Subscription → API/Download</strong>.
+      </p>
+      <div style="display:flex;flex-direction:column;gap:10px;max-width:480px;margin-bottom:12px">
+        <div class="form-group" style="margin:0">
+          <label class="form-label">API Token</label>
+          <input
+            id="scp-token-input"
+            type="password"
+            placeholder="40-character token"
+            value="${escHtml(state.scpToken || '')}"
+          />
+        </div>
+        <button class="btn-primary" onclick="window.saveScpToken()">Save</button>
+      </div>
+      ${state.scpToken
+        ? `<div style="font-size:12px;color:var(--green);margin-top:8px">✓ SportsCardsPro token saved — market prices will use real sold data.</div>`
+        : `<div style="font-size:12px;color:var(--text-muted);margin-top:8px">Not configured — market prices will use live eBay listing prices.</div>`
+      }
+    </div>
+
+    <div class="settings-group">
       <h3>Data management</h3>
       <p>Export your deal history and category rules for backup, or import from a previous export.</p>
       <div style="display:flex;gap:10px;flex-wrap:wrap">
@@ -177,6 +202,15 @@ function doPost(e) {
       </div>
     </div>
   `;
+}
+
+export function saveScpToken() {
+  const input = document.getElementById('scp-token-input');
+  const token = (input ? input.value : state.scpToken || '').trim();
+  state.scpToken = token;
+  persistSettings();
+  state.notify = { type: token ? 'ok' : 'info', msg: token ? '✓ SportsCardsPro token saved.' : 'Token cleared.' };
+  window.renderApp();
 }
 
 export function saveGasUrl() {
