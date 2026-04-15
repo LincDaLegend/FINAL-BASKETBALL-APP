@@ -161,6 +161,16 @@ window.toggleLogForm = () => {
   window.renderApp();
 };
 
+window.setExpenseCatFilter = (f) => {
+  state.expenseCatFilter = f;
+  window.renderApp();
+};
+
+window.expenseSearch = (val) => {
+  state.expenseSearch = val;
+  window.renderApp();
+};
+
 window.setVerdictFilter = (v) => {
   state.verdictFilter = state.verdictFilter === v ? '' : v;
   renderApp();
