@@ -53,29 +53,50 @@ function renderApp() {
   const app = document.getElementById('app');
   if (!app) return;
 
-  app.innerHTML = `
-    <header class="app-header">
-      <div class="logo">
-        <div class="logo-icon">${CROWN_SVG}</div>
-        <div class="logo-text">Basketball Tracker App</div>
-      </div>
-    </header>
+  const PAGE_TITLES = {
+    search: 'Search', summary: 'Summary', sales: 'Sales',
+    inventory: 'Inventory', held: 'Held Orders', budget: 'Expenses',
+    rules: 'Player Tiers', settings: 'Settings',
+  };
 
+  app.innerHTML = `
     <div class="app-body">
       <nav class="sidebar">
-        ${NAV.map(n => `
-          ${n.section ? `<div class="nav-section">${n.section}</div>` : ''}
-          <button class="nav-item ${state.tab === n.id ? 'active' : ''}" onclick="window.setTab('${n.id}')">
-            <span class="nav-icon">${ICONS[n.icon]}</span>
-            <span>${n.label}</span>
-            ${n.id === 'deals' && state.deals.length > 0 ? `<span class="nav-count">${state.deals.length}</span>` : ''}
-          </button>
-        `).join('')}
+        <div class="sidebar-logo">
+          <div class="logo-icon">${CROWN_SVG}</div>
+          <div>
+            <div class="logo-name">Baller</div>
+            <div class="logo-sub">Business</div>
+          </div>
+        </div>
+
+        <div class="sidebar-nav">
+          ${NAV.map(n => `
+            <button class="nav-item ${state.tab === n.id ? 'active' : ''}" onclick="window.setTab('${n.id}')">
+              <span class="nav-icon">${ICONS[n.icon]}</span>
+              <span>${n.label}</span>
+              ${n.id === 'held' ? `<span class="nav-count">0</span>` : ''}
+            </button>
+          `).join('')}
+        </div>
       </nav>
 
-      <main class="main-content">
-        ${renderPage()}
-      </main>
+      <div class="main-area">
+        <div class="top-bar">
+          <div class="top-bar-search">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input placeholder="Search…" />
+          </div>
+          <div class="top-bar-actions">
+            <button class="top-bar-btn">Sync</button>
+            <div class="top-bar-avatar">B</div>
+          </div>
+        </div>
+
+        <main class="main-content">
+          ${renderPage()}
+        </main>
+      </div>
     </div>
 
     <nav class="mobile-nav">
