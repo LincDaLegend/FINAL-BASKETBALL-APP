@@ -156,6 +156,11 @@ window.setSalesFilter = (f) => {
   window.renderApp();
 };
 
+window.toggleLogForm = () => {
+  state.logFormOpen = !state.logFormOpen;
+  window.renderApp();
+};
+
 window.setVerdictFilter = (v) => {
   state.verdictFilter = state.verdictFilter === v ? '' : v;
   renderApp();

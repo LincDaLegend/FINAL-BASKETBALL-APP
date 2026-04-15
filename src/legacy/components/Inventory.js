@@ -1,14 +1,18 @@
 import { state } from '../utils/state.js';
 
-// Show these columns in order; skip Batch (internal numbering)
-const DISPLAY_COLS = ['Date', 'Item Name', 'Cost', 'Notes'];
-
 function parseMoney(val) {
   return parseFloat(String(val || '0').replace(/[₱,]/g, '')) || 0;
 }
 
 function fmtMoney(n) {
   return '₱' + Math.round(n).toLocaleString('en-PH');
+}
+
+function fmtDate(d) {
+  if (!d) return '';
+  const dt = new Date(d + 'T00:00:00');
+  if (isNaN(dt)) return String(d);
+  return dt.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
 }
 
 export function renderInventory() {
@@ -18,67 +22,48 @@ export function renderInventory() {
   const totalCost = allRows.reduce((s, r) => s + parseMoney(r['Cost'] || r['Buy Price'] || r['Price']), 0);
   const avgCost   = allRows.length ? totalCost / allRows.length : 0;
 
-  const availCols = new Set(cols || []);
-  const showCols  = DISPLAY_COLS.filter(c => availCols.has(c));
-  // Fall back to all cols minus Batch if DISPLAY_COLS don't match
-  const effectiveCols = showCols.length
-    ? showCols
-    : (cols || []).filter(c => c && c !== 'Batch' && c !== 'batch');
+  const heroGrad = 'linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%)';
 
   return `
-    <div class="biz-header">
-      <div class="biz-header-left">
-        <div class="page-title">Inventory</div>
-        <div class="page-subtitle">Inventory 2026 · sourced from Google Sheets</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <div style="font-size:17px;font-weight:700;color:var(--text-primary)">Inventory</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Cards in stock · Inventory 2026</div>
       </div>
       <button class="btn-ghost btn-sm" onclick="window.loadSheetTab('inventory')" ${loading ? 'disabled' : ''}>
         ${loading ? 'Loading…' : '↻ Refresh'}
       </button>
     </div>
 
-    ${allRows.length ? `
-    <div class="stats-grid" style="margin-bottom:20px;grid-template-columns:repeat(3,minmax(0,1fr))">
-      <div class="stat-card">
-        <div class="stat-label">In Stock</div>
-        <div class="stat-value">${allRows.length}</div>
-        <div class="stat-sub">cards</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Total Cost</div>
-        <div class="stat-value">${fmtMoney(totalCost)}</div>
-        <div class="stat-sub">capital deployed</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-label">Avg Cost</div>
-        <div class="stat-value">${fmtMoney(avgCost)}</div>
-        <div class="stat-sub">per card</div>
-      </div>
-    </div>` : ''}
-
     ${error ? `<div class="notify notify-err">${error}</div>` : ''}
     ${loading ? `<div class="empty-state"><p>Loading from Google Sheets…</p></div>` : ''}
 
-    ${!loading && !error && allRows.length ? `
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead>
-            <tr>
-              ${effectiveCols.map(c => `<th>${escHtml(String(c))}</th>`).join('')}
-            </tr>
-          </thead>
-          <tbody>
-            ${allRows.map(r => `
-              <tr>
-                ${effectiveCols.map(c => {
-                  const val  = r[c] ?? '';
-                  const isNum = (c === 'Cost' || c === 'Buy Price' || c === 'Price')
-                             && val !== '' && !isNaN(parseMoney(val) || NaN);
-                  return `<td style="${isNum ? 'text-align:right;font-variant-numeric:tabular-nums' : ''}">${escHtml(String(val))}</td>`;
-                }).join('')}
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
+    ${allRows.length ? `
+      <div class="wallet-hero" style="background:${heroGrad}">
+        <div class="wallet-hero-eyebrow">Capital Deployed</div>
+        <div class="wallet-hero-amount">${fmtMoney(totalCost)}</div>
+        <div class="wallet-hero-row">
+          <div class="wallet-hero-stat">Cards <strong>${allRows.length}</strong></div>
+          <div class="wallet-hero-stat">Avg Cost <strong>${fmtMoney(avgCost)}</strong></div>
+        </div>
+      </div>
+
+      <div>
+        ${allRows.map(r => {
+          const name = r['Item Name'] || r['Item'] || '(unnamed)';
+          const cost = parseMoney(r['Cost'] || r['Buy Price'] || r['Price']);
+          const date = r['Date'] || r['Date Acquired'] || '';
+          const notes = r['Notes'] || r['Grade'] || '';
+          return `
+            <div class="inv-row">
+              <div class="inv-dot"></div>
+              <div class="inv-body">
+                <div class="inv-name">${escHtml(name)}</div>
+                <div class="inv-date">${fmtDate(date)}${notes ? (date ? ' · ' : '') + escHtml(notes) : ''}</div>
+              </div>
+              <div class="inv-cost">${cost ? fmtMoney(cost) : '—'}</div>
+            </div>`;
+        }).join('')}
       </div>
     ` : (!loading && !error && !allRows.length && rows !== undefined ? `
       <div class="empty-state"><p>No inventory records found.</p></div>

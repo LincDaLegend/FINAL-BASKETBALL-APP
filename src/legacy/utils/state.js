@@ -57,6 +57,7 @@ export const state = {
 
   // New transaction form (transient)
   newTxn: { date: '', client: '', itemSearch: '', selectedItem: null, soldPrice: '' },
+  logFormOpen: false,
 
   // Active subtab within the Player Tiers page (transient — not persisted)
   rulesTab: 'players',  // 'players' | 'sets'

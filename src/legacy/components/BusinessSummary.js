@@ -42,7 +42,6 @@ function renderBarChart(rows, cols) {
   const gapPx  = 2;
   const barW   = Math.min((groupW - 10) / series.length - gapPx, 20);
 
-  // Y-axis grid lines
   const grid = Array.from({ length: 5 }, (_, i) => {
     const v  = maxVal * i / 4;
     const y  = padT + chartH - (v / maxVal) * chartH;
@@ -51,7 +50,6 @@ function renderBarChart(rows, cols) {
             <text x="${(padL - 5).toFixed(1)}" y="${(y + 4).toFixed(1)}" text-anchor="end" font-size="10" fill="#bbb">${lbl}</text>`;
   }).join('');
 
-  // Bars + x-axis labels
   const bars = data.map((d, gi) => {
     const groupX   = padL + gi * groupW;
     const totalW   = series.length * (barW + gapPx) - gapPx;
@@ -69,7 +67,6 @@ function renderBarChart(rows, cols) {
     return `${rects}<text x="${lx}" y="${ly}" text-anchor="middle" font-size="10" fill="#bbb">${escHtml(d.label)}</text>`;
   }).join('');
 
-  // Legend centred below chart
   const legendW = series.length * 90;
   const legend  = series.map((s, i) => {
     const lx = (W / 2 - legendW / 2 + i * 90).toFixed(1);
@@ -103,11 +100,25 @@ export function renderBusinessSummary() {
     totals[c] = (rows || []).reduce((s, r) => s + parseMoney(r[c]), 0);
   });
 
+  // Find key totals for hero card
+  const revCol    = numCols.find(c => /revenue|sale|income|gross.*in/i.test(c));
+  const costCol   = numCols.find(c => /cost/i.test(c) && !/gross/i.test(c));
+  const profitCol = numCols.find(c => /profit|net/i.test(c));
+
+  const heroProfit  = profitCol ? totals[profitCol] : 0;
+  const heroRevenue = revCol    ? totals[revCol]    : 0;
+  const heroCost    = costCol   ? totals[costCol]   : 0;
+  const heroGrad = heroProfit >= 0
+    ? 'linear-gradient(135deg, #059669 0%, #10b981 100%)'
+    : 'linear-gradient(135deg, #dc2626 0%, #ef4444 100%)';
+
+  const hasData = !loading && !error && rows?.length;
+
   return `
-    <div class="biz-header">
-      <div class="biz-header-left">
-        <div class="page-title">Summary</div>
-        <div class="page-subtitle">Monthly business overview · sourced from Google Sheets</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+      <div>
+        <div style="font-size:17px;font-weight:700;color:var(--text-primary)">Summary</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-top:2px">Monthly business overview</div>
       </div>
       <button class="btn-ghost btn-sm" onclick="window.loadSheetTab('summary')" ${loading ? 'disabled' : ''}>
         ${loading ? 'Loading…' : '↻ Refresh'}
@@ -117,30 +128,46 @@ export function renderBusinessSummary() {
     ${error ? `<div class="notify notify-err">${error}</div>` : ''}
     ${loading ? `<div class="empty-state"><p>Loading from Google Sheets…</p></div>` : ''}
 
-    ${!loading && !error && rows?.length ? `
+    ${hasData && (revCol || costCol || profitCol) ? `
+      <div class="wallet-hero" style="background:${heroGrad}">
+        <div class="wallet-hero-eyebrow">Net Profit · All Time</div>
+        <div class="wallet-hero-amount">${fmtMoney(heroProfit)}</div>
+        <div class="wallet-hero-row">
+          ${revCol    ? `<div class="wallet-hero-stat">Revenue <strong>${fmtMoney(heroRevenue)}</strong></div>` : ''}
+          ${costCol   ? `<div class="wallet-hero-stat">COGS <strong>${fmtMoney(heroCost)}</strong></div>` : ''}
+          ${numCols.filter(c => c !== revCol && c !== costCol && c !== profitCol).slice(0, 2).map(c =>
+            `<div class="wallet-hero-stat">${escHtml(c)} <strong>${fmtMoney(totals[c])}</strong></div>`
+          ).join('')}
+        </div>
+      </div>
+    ` : ''}
+
+    ${hasData ? `
       ${renderBarChart(rows, cols)}
-      <div class="table-wrap">
-        <table class="data-table">
+      <div style="overflow-x:auto;border-radius:14px;border:1px solid var(--border)">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
           <thead>
-            <tr>${(cols || []).filter(c => c).map(c => `<th>${escHtml(String(c))}</th>`).join('')}</tr>
+            <tr style="background:var(--bg-surface)">
+              ${(cols || []).filter(c => c).map(c => `<th style="padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;white-space:nowrap">${escHtml(String(c))}</th>`).join('')}
+            </tr>
           </thead>
           <tbody>
-            ${rows.map(r => `
-              <tr>
+            ${rows.map((r, ri) => `
+              <tr style="border-top:1px solid var(--border)${ri % 2 ? ';background:var(--bg-surface)' : ''}">
                 ${(cols || []).filter(c => c).map(c => {
                   const val   = r[c] ?? '';
                   const isNum = numCols.includes(c) && val !== '';
-                  return `<td style="${isNum ? 'text-align:right;font-variant-numeric:tabular-nums' : ''}">${escHtml(String(val))}</td>`;
+                  return `<td style="padding:10px 14px;${isNum ? 'text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono)' : 'color:var(--text-secondary)'}">${escHtml(String(val))}</td>`;
                 }).join('')}
               </tr>`).join('')}
           </tbody>
           ${numCols.length ? `
           <tfoot>
-            <tr style="border-top:2px solid var(--border)">
+            <tr style="border-top:2px solid var(--border);background:var(--bg-surface)">
               ${(cols || []).filter(c => c).map((c, i) =>
                 numCols.includes(c)
-                  ? `<td style="padding:10px 12px;text-align:right;font-variant-numeric:tabular-nums;font-weight:600;font-size:13px">${fmtMoney(totals[c])}</td>`
-                  : `<td style="padding:10px 12px;font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px">${i === 0 ? 'Total' : ''}</td>`
+                  ? `<td style="padding:11px 14px;text-align:right;font-variant-numeric:tabular-nums;font-family:var(--mono);font-weight:700;font-size:13px">${fmtMoney(totals[c])}</td>`
+                  : `<td style="padding:11px 14px;font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase">${i === 0 ? 'Total' : ''}</td>`
               ).join('')}
             </tr>
           </tfoot>` : ''}
