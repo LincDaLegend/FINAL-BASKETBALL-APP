@@ -18,7 +18,7 @@ export function renderSearch() {
           type="text"
           placeholder="Player name  (e.g. LeBron James, Jordan Clarkson...)"
           value="${escHtml(state.query)}"
-          style="flex:1;min-width:180px"
+          style="flex:1;min-width:180px;font-size:15px;padding:11px 14px;border-radius:8px"
           onkeydown="if(event.key==='Enter') window.doSearch()"
         />
         <button class="btn-search" onclick="window.doSearch()" ${state.loading ? 'disabled' : ''}>
@@ -30,7 +30,7 @@ export function renderSearch() {
         <div style="flex:1;min-width:200px">
           <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Target Profit</div>
           <div style="display:flex;align-items:center;gap:10px">
-            <input type="range" min="0" max="200" step="5" value="${margin}"
+            <input type="range" min="0" max="200" step="1" value="${margin}"
               oninput="window.setTargetMargin(this.value)"
               style="flex:1;accent-color:var(--accent);height:4px;cursor:pointer;background:none;border:none;padding:0"
             />
@@ -235,21 +235,9 @@ function renderResults() {
           <!-- Market price -->
           <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
             <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">Market · ${r.grade}${r._marketLabel ? ` · ${r._marketLabel}` : ''}</div>
-            ${r.marketValue != null ? (() => {
-              const roi = r.realRoiPct ?? 0;
-              const cls = roi >= 20 ? 'badge-buy' : roi >= 0 ? 'badge-consider' : 'badge-skip';
-              const sign = roi >= 0 ? '+' : '';
-              const trendIcon  = r.trendDir === 'up' ? '↑' : r.trendDir === 'down' ? '↓' : '→';
-              const trendLabel = r.trendDir === 'up' ? 'trending' : r.trendDir === 'down' ? 'cooling' : 'stable';
-              const trendCls   = r.trendDir === 'up' ? 'badge-buy' : r.trendDir === 'down' ? 'badge-skip' : 'badge-gray';
-              const trendPct   = r.trend != null ? ` ${r.trend > 0 ? '+' : ''}${r.trend}%` : '';
-              return `
-                <div style="font-size:14px;font-weight:700;color:var(--text-primary)">~$${r.marketValue.toFixed(0)}</div>
-                <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
-                  <span class="badge ${cls}">${sign}${roi}% vs mkt</span>
-                  ${r.trendDir ? `<span class="badge ${trendCls}">${trendIcon} ${trendLabel}${trendPct}</span>` : ''}
-                </div>`;
-            })() : `<span style="font-size:11px;color:var(--text-muted)">-- no data</span>`}
+            ${r.marketValue != null
+              ? `<div style="font-size:15px;font-weight:700;color:var(--text-primary)">~$${r.marketValue.toFixed(0)}</div>`
+              : `<span style="font-size:11px;color:var(--text-muted)">-- no data</span>`}
           </div>
         </div>
       </div>
