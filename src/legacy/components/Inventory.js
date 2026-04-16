@@ -10,7 +10,8 @@ function fmtMoney(n) {
 
 function fmtDate(d) {
   if (!d) return '';
-  const dt = new Date(d + 'T00:00:00');
+  let dt = new Date(d + 'T00:00:00');
+  if (isNaN(dt)) dt = new Date(d);
   if (isNaN(dt)) return String(d);
   return dt.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
@@ -24,8 +25,17 @@ export function renderInventory() {
   const costKey   = cols?.[8];
   const targetKey = cols?.[9];
 
-  const getCost   = r => parseMoney(costKey   ? r[costKey]   : (r['Cost'] || r['Buy Price'] || r['Price']));
-  const getTarget = r => targetKey ? parseMoney(r[targetKey]) : null;
+  const getCost = r => parseMoney(costKey ? r[costKey] : (r['Cost'] || r['Buy Price'] || r['Price']));
+  const TARGET_FALLBACKS = ['Target', 'Target Price', 'Target Selling Price', 'Target Sell', 'Sell Price', 'Asking Price'];
+  const getTarget = r => {
+    // Try positional Col J first, then common header names
+    const fromCol = targetKey && r[targetKey] != null && r[targetKey] !== '' ? parseMoney(r[targetKey]) : null;
+    if (fromCol != null) return fromCol;
+    for (const k of TARGET_FALLBACKS) {
+      if (r[k] != null && r[k] !== '') return parseMoney(r[k]);
+    }
+    return null;
+  };
 
   const totalCost = allRows.reduce((s, r) => s + getCost(r), 0);
   const avgCost   = allRows.length ? totalCost / allRows.length : 0;

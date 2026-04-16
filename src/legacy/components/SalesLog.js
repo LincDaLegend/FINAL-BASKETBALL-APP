@@ -14,7 +14,11 @@ function today() {
 
 function fmtDate(d) {
   if (!d) return '';
-  const dt = new Date(d + 'T00:00:00');
+  // Manually-entered dates are YYYY-MM-DD; append time to avoid UTC offset
+  let dt = new Date(d + 'T00:00:00');
+  // Sheets-formatted dates (e.g. "4/15/2026") can't take T00:00:00
+  if (isNaN(dt)) dt = new Date(d);
+  if (isNaN(dt)) return String(d);
   return dt.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
@@ -158,6 +162,7 @@ function renderTxnList(txns) {
     <table class="bgt-table">
       <thead>
         <tr>
+          <th>Date</th>
           <th>Item</th>
           <th style="text-align:right">Sale</th>
           <th style="text-align:right">Profit</th>
@@ -166,16 +171,16 @@ function renderTxnList(txns) {
       </thead>
       <tbody>
         ${txns.map(t => {
-          const profit = t.profit ?? (t.soldPrice - (t.cost || 0));
-          const pos    = profit >= 0;
+          const profit  = t.profit ?? (t.soldPrice - (t.cost || 0));
+          const pos     = profit >= 0;
           const hasCost = t.cost != null && t.cost > 0;
+          const dateStr = fmtDate(t.date);
           return `
             <tr>
+              <td class="bgt-date-cell" style="white-space:nowrap;color:#64748b;font-size:12px">${escHtml(dateStr) || '—'}</td>
               <td>
                 <div style="font-weight:700;color:#0f172a;font-size:13px">${escHtml(t.item || '—')}</div>
-                <div style="font-size:11px;color:#94a3b8;margin-top:2px">
-                  ${escHtml(fmtDate(t.date))}${t.client ? ` · ${escHtml(t.client)}` : ''}
-                </div>
+                ${t.client ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${escHtml(t.client)}</div>` : ''}
               </td>
               <td class="bgt-amount-cell" style="font-size:14px;font-weight:700;color:#0f172a">${fmtMoney(t.soldPrice || 0)}</td>
               <td class="bgt-amount-cell">
