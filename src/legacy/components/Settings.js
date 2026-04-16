@@ -118,6 +118,20 @@ function doPost(e) {
   try {
     const d  = JSON.parse(e.postData.contents);
     const ss = SpreadsheetApp.openById(SHEET_ID);
+
+    if (d.action === 'initSheet') {
+      // Create the tab if it doesn't exist, then write the header row
+      let sh = ss.getSheetByName(d.sheet);
+      if (!sh) sh = ss.insertSheet(d.sheet);
+      if (d.headers && d.headers.length) {
+        sh.getRange(1, 1, 1, d.headers.length).setValues([d.headers]);
+        sh.getRange(1, 1, 1, d.headers.length).setFontWeight('bold');
+      }
+      return ContentService
+        .createTextOutput(JSON.stringify({ ok: true }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     const sh = ss.getSheetByName(d.sheet);
     if (!sh) throw new Error('Sheet not found: ' + d.sheet);
 
@@ -190,6 +204,32 @@ function doPost(e) {
         ? `<div style="font-size:12px;color:var(--green);margin-top:8px">✓ SportsCardsPro token saved — market prices will use real sold data.</div>`
         : `<div style="font-size:12px;color:var(--text-muted);margin-top:8px">Not configured — market prices will use live eBay listing prices.</div>`
       }
+    </div>
+
+    <div class="settings-group">
+      <h3>Setup sheet tabs</h3>
+      <p>
+        Creates <strong>Baller Sales</strong> and <strong>Baller Inventory</strong> tabs in your Google Sheet with the correct column headers.
+        Run once — the app will read from and write to these tabs automatically.
+        Requires the Apps Script URL to be saved above.
+      </p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn-primary" onclick="window.initSheet('Baller Sales')">Create Baller Sales tab</button>
+        <button class="btn-primary" onclick="window.initSheet('Baller Inventory')">Create Baller Inventory tab</button>
+      </div>
+      <div style="font-size:11px;color:var(--text-muted);line-height:1.6">
+        <strong>Baller Sales columns:</strong> Date · Item Name · Buyer · Cost (PHP) · Sale Price (PHP) · Profit (PHP) · Notes<br>
+        <strong>Baller Inventory columns:</strong> Item Name · Category · Grade · Date Acquired · Seller · Buy Price · Fees · Shipping In · Total Cost · Target Price · Notes · Status
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <h3>Reset data</h3>
+      <p>Clear local cached data without touching your Google Sheet.</p>
+      <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn-danger" onclick="window.resetTransactions()">Clear sales transactions</button>
+        <button class="btn-danger" onclick="window.resetInventory()">Clear inventory cache</button>
+      </div>
     </div>
 
     <div class="settings-group">

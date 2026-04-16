@@ -21,9 +21,9 @@ export function renderInventory() {
 
   const allRows = rows || [];
 
-  // Column I (index 8) = Total Cost, Column J (index 9) = Target Price
-  const costKey   = cols?.[8];
-  const targetKey = cols?.[9];
+  // Named columns first (Baller Inventory layout), then positional fallback (Col I / Col J)
+  const costKey   = cols?.find(c => c === 'Total Cost')   ?? cols?.[8];
+  const targetKey = cols?.find(c => c === 'Target Price') ?? cols?.[9];
 
   const getCost = r => parseMoney(costKey ? r[costKey] : (r['Cost'] || r['Buy Price'] || r['Price']));
   const TARGET_FALLBACKS = ['Target', 'Target Price', 'Target Selling Price', 'Target Sell', 'Sell Price', 'Asking Price'];

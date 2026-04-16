@@ -148,9 +148,9 @@ window.setTab = (tab) => {
 
 // Sheet configs: key → { sheet name, optional range }
 const SHEET_CONFIG = {
-  summary:   { sheet: 'Summary 2026',   range: 'B22:J35' },
-  sales:     { sheet: 'Sales 2026',     range: '' },
-  inventory: { sheet: 'Inventory 2026', range: '' },
+  summary:   { sheet: 'Summary 2026',  range: 'B22:J35' },
+  sales:     { sheet: 'Baller Sales',  range: '' },
+  inventory: { sheet: 'Baller Inventory', range: '' },
 };
 
 window.loadSheetTab = async (key) => {
@@ -339,6 +339,48 @@ window.removeTransaction = (id) => {
   window.renderApp();
 };
 
+window.resetTransactions = () => {
+  if (!confirm('Clear all local sales transactions? This only removes data from this device — your Google Sheet is not affected.')) return;
+  state.transactions = [];
+  state.sheetsCache = { ...state.sheetsCache, sales: undefined };
+  persistTransactions();
+  state.notify = { type: 'ok', msg: 'Sales data cleared.' };
+  window.renderApp();
+};
+
+window.resetInventory = () => {
+  if (!confirm('Clear cached inventory data? This only clears the local cache — your Google Sheet is not affected.')) return;
+  state.sheetsCache = { ...state.sheetsCache, inventory: undefined };
+  state.notify = { type: 'ok', msg: 'Inventory cache cleared.' };
+  window.renderApp();
+};
+
+// Exact column layout for each sheet tab
+const SHEET_HEADERS = {
+  'Baller Sales':      ['Date', 'Item Name', 'Buyer', 'Cost (PHP)', 'Sale Price (PHP)', 'Profit (PHP)', 'Notes'],
+  'Baller Inventory':  ['Item Name', 'Category', 'Grade', 'Date Acquired', 'Seller', 'Buy Price', 'Fees', 'Shipping In', 'Total Cost', 'Target Price', 'Notes', 'Status'],
+};
+
+window.initSheet = async (sheetName) => {
+  const headers = SHEET_HEADERS[sheetName];
+  if (!headers) { alert('Unknown sheet: ' + sheetName); return; }
+  if (!state.gasWriteUrl) { alert('Set your Google Apps Script URL in Settings first.'); return; }
+  try {
+    const resp = await fetch('/api/sheets/write', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gasUrl: state.gasWriteUrl, action: 'initSheet', sheet: sheetName, headers }),
+    });
+    const data = await resp.json();
+    state.notify = data.ok
+      ? { type: 'ok',  msg: `✓ "${sheetName}" tab created with headers.` }
+      : { type: 'err', msg: data.error || 'Failed to create sheet.' };
+  } catch (e) {
+    state.notify = { type: 'err', msg: 'Network error: ' + e.message };
+  }
+  window.renderApp();
+};
+
 // Import existing sheet rows as transactions (one-time migration)
 window.importTransactionsFromSheet = () => {
   const { rows, cols } = state.sheetsCache?.sales || {};
@@ -347,20 +389,23 @@ window.importTransactionsFromSheet = () => {
     window.renderApp(); return;
   }
   const parseMoney = v => parseFloat(String(v || '0').replace(/[₱,]/g, '')) || 0;
-  // Column B (index 1) = Transaction Date
-  const dateKey = cols?.[1];
+  // Baller Sales layout: Date(0) | Item Name(1) | Buyer(2) | Cost PHP(3) | Sale Price PHP(4) | Profit PHP(5) | Notes(6)
   const imported = rows.map((r, i) => {
-    const rawDate  = dateKey ? r[dateKey] : '';
-    const soldRaw  = r['Sale'] || r['Sold Price'] || r[cols?.[4]] || '';
-    const costRaw  = r['Cost'] || r[cols?.[3]] || '';
+    const dateRaw = r['Date']             || r[cols?.[0]] || '';
+    const item    = r['Item Name']        || r['Item']    || r[cols?.[1]] || '';
+    const buyer   = r['Buyer']            || r['Client']  || r[cols?.[2]] || '';
+    const costRaw = r['Cost (PHP)']       || r['Cost']    || r[cols?.[3]] || '';
+    const soldRaw = r['Sale Price (PHP)'] || r['Sale']    || r['Sold Price'] || r[cols?.[4]] || '';
+    const cost      = parseMoney(costRaw);
+    const soldPrice = parseMoney(soldRaw);
     return {
       id:        String(Date.now() + i),
-      date:      rawDate || r['Date'] || '',
-      client:    r['Buyer']  || r['Client']     || '',
-      item:      r['Item']   || r['Item Name']  || '',
-      cost:      parseMoney(costRaw),
-      soldPrice: parseMoney(soldRaw),
-      profit:    parseMoney(soldRaw) - parseMoney(costRaw),
+      date:      dateRaw,
+      client:    buyer,
+      item,
+      cost,
+      soldPrice,
+      profit:    soldPrice - cost,
       imported:  true,
     };
   });

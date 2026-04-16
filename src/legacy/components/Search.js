@@ -27,22 +27,22 @@ export function renderSearch() {
       </div>
 
       <div style="display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap;padding:12px 14px;background:var(--bg-surface);border-radius:8px;margin-bottom:10px">
-        <div style="flex:1;min-width:200px">
+        <div style="flex:1;min-width:160px">
           <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Target Profit</div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <input type="range" min="0" max="200" step="1" value="${margin}"
-              oninput="window.setTargetMargin(this.value)"
-              style="flex:1;accent-color:var(--accent);height:4px;cursor:pointer;background:none;border:none;padding:0"
+          <div style="display:flex;align-items:center;gap:6px">
+            <input type="number" min="0" max="500" step="1" value="${margin}"
+              onchange="window.setTargetMargin(this.value)"
+              style="width:80px;padding:6px 8px;font-size:14px;font-weight:700;color:var(--accent)"
             />
-            <span style="font-size:15px;font-weight:700;color:var(--accent);min-width:44px;text-align:right">${margin}%</span>
+            <span style="font-size:14px;font-weight:600;color:var(--accent)">%</span>
           </div>
         </div>
         <div style="min-width:130px">
           <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Est. Shipping Out</div>
           <div style="display:flex;align-items:center;gap:4px">
             <span style="font-size:13px;color:var(--text-muted)">₱</span>
-            <input type="number" min="0" step="10" value="${ship}"
-              oninput="window.setEstShipping(this.value)"
+            <input type="number" min="0" step="1" value="${ship}"
+              onchange="window.setEstShipping(this.value)"
               style="width:90px;padding:6px 8px;font-size:13px;font-weight:600"
             />
           </div>
