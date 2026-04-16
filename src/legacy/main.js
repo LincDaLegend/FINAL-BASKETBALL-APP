@@ -341,22 +341,29 @@ window.removeTransaction = (id) => {
 
 // Import existing sheet rows as transactions (one-time migration)
 window.importTransactionsFromSheet = () => {
-  const { rows } = state.sheetsCache?.sales || {};
+  const { rows, cols } = state.sheetsCache?.sales || {};
   if (!rows?.length) {
     state.notify = { type: 'err', msg: 'No sheet data loaded — click "Load Sheet Data" first.' };
     window.renderApp(); return;
   }
   const parseMoney = v => parseFloat(String(v || '0').replace(/[₱,]/g, '')) || 0;
-  const imported = rows.map((r, i) => ({
-    id:        String(Date.now() + i),
-    date:      r['Date']   || '',
-    client:    r['Buyer']  || r['Client']     || '',
-    item:      r['Item']   || r['Item Name']  || '',
-    cost:      parseMoney(r['Cost']),
-    soldPrice: parseMoney(r['Sale'] || r['Sold Price']),
-    profit:    parseMoney(r['Sale'] || r['Sold Price']) - parseMoney(r['Cost']),
-    imported:  true,
-  }));
+  // Column B (index 1) = Transaction Date
+  const dateKey = cols?.[1];
+  const imported = rows.map((r, i) => {
+    const rawDate  = dateKey ? r[dateKey] : '';
+    const soldRaw  = r['Sale'] || r['Sold Price'] || r[cols?.[4]] || '';
+    const costRaw  = r['Cost'] || r[cols?.[3]] || '';
+    return {
+      id:        String(Date.now() + i),
+      date:      rawDate || r['Date'] || '',
+      client:    r['Buyer']  || r['Client']     || '',
+      item:      r['Item']   || r['Item Name']  || '',
+      cost:      parseMoney(costRaw),
+      soldPrice: parseMoney(soldRaw),
+      profit:    parseMoney(soldRaw) - parseMoney(costRaw),
+      imported:  true,
+    };
+  });
   state.transactions = [...imported, ...(state.transactions || [])];
   persistTransactions();
   state.notify = { type: 'ok', msg: `Imported ${imported.length} rows from sheet.` };
