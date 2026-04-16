@@ -85,63 +85,48 @@ export function renderInventory() {
         <table class="bgt-table">
           <thead>
             <tr>
-              <th>Item Name</th>
-              <th>Date</th>
-              <th style="text-align:right">Cost${costKey ? ` (Col I)` : ''}</th>
-              <th style="text-align:right">Target${targetKey ? ` (Col J)` : ''}</th>
-              ${Object.keys(allRows[0] || {}).some(k => k !== costKey && k !== targetKey) ? '<th>Notes</th>' : ''}
+              <th>Item</th>
+              <th style="text-align:right">Cost</th>
+              <th style="text-align:right">Target</th>
             </tr>
           </thead>
           <tbody>
             ${allRows.map(r => {
-              const name       = r['Item Name'] || r['Item'] || r[cols?.[0]] || '(unnamed)';
-              const cost       = getCost(r);
-              const target     = getTarget(r);
-              const date       = r['Date'] || r['Date Acquired'] || r[cols?.[1]] || '';
-              const notes      = r['Notes'] || r['Grade'] || r['Status'] || '';
-              const cat        = r['Category'] || r['Type'] || '';
-              const soldPrice  = soldMap[name.toLowerCase().trim()];
+              const name      = r['Item Name'] || r['Item'] || r[cols?.[0]] || '(unnamed)';
+              const cost      = getCost(r);
+              const target    = getTarget(r);
+              const cat       = r['Category'] || r['Type'] || r['Grade'] || '';
+              const soldPrice = soldMap[name.toLowerCase().trim()];
 
-              // Target comparison
-              let targetCell = '—';
+              // Target cell — compact
+              let targetCell = '<span style="color:#cbd5e1">—</span>';
               if (target != null && target > 0) {
                 if (soldPrice != null) {
-                  const diff    = soldPrice - target;
-                  const diffPHP = diff * (state.phpRate || 57.2);
-                  const hit     = soldPrice >= target;
+                  const hit = soldPrice >= target;
                   targetCell = `
-                    <div style="font-weight:700;color:${hit ? '#10b981' : '#ef4444'}">${fmtMoney(target)}</div>
-                    <div style="font-size:10px;color:${hit ? '#10b981' : '#ef4444'};margin-top:2px">
-                      ${hit ? '✓ hit' : '✗ miss'} · ${diff >= 0 ? '+' : ''}${fmtMoney(diffPHP)}
-                    </div>`;
+                    <span style="font-size:14px;font-weight:700;color:${hit ? '#10b981' : '#ef4444'}">${fmtMoney(target)}</span>
+                    <span style="display:inline-block;margin-left:6px;font-size:10px;font-weight:600;padding:1px 6px;border-radius:99px;background:${hit ? '#f0fdf4' : '#fff1f2'};color:${hit ? '#10b981' : '#ef4444'}">${hit ? '✓' : '✗'}</span>`;
                 } else {
-                  targetCell = `<div style="font-weight:600;color:#0f172a">${fmtMoney(target)}</div>
-                    <div style="font-size:10px;color:#94a3b8;margin-top:2px">unsold</div>`;
+                  targetCell = `<span style="font-size:14px;font-weight:700;color:#0f172a">${fmtMoney(target)}</span>`;
                 }
               }
-
-              const hasNotes = Object.keys(allRows[0] || {}).some(k => k !== costKey && k !== targetKey);
 
               return `
                 <tr>
                   <td>
-                    <div style="font-weight:700;color:#0f172a">${escHtml(name)}</div>
+                    <div style="font-weight:700;color:#0f172a;font-size:13px">${escHtml(name)}</div>
                     ${cat ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${escHtml(cat)}</div>` : ''}
                   </td>
-                  <td class="bgt-date-cell">${escHtml(fmtDate(date))}</td>
-                  <td class="bgt-amount-cell">${cost ? fmtMoney(cost) : '—'}</td>
+                  <td class="bgt-amount-cell" style="font-size:14px;font-weight:700;color:#0f172a">${cost ? fmtMoney(cost) : '<span style="color:#cbd5e1">—</span>'}</td>
                   <td class="bgt-amount-cell">${targetCell}</td>
-                  ${hasNotes ? `<td style="color:#64748b;font-size:12px">${escHtml(notes)}</td>` : ''}
                 </tr>`;
             }).join('')}
           </tbody>
           <tfoot>
             <tr style="border-top:2px solid #f1f5f9">
               <td style="padding:12px 20px;font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;border-bottom:none">Total</td>
-              <td style="border-bottom:none"></td>
               <td class="bgt-amount-cell" style="padding:12px 20px;font-weight:700;border-bottom:none">${fmtMoney(totalCost)}</td>
               <td style="border-bottom:none"></td>
-              ${Object.keys(allRows[0] || {}).some(k => k !== costKey && k !== targetKey) ? '<td style="border-bottom:none"></td>' : ''}
             </tr>
           </tfoot>
         </table>

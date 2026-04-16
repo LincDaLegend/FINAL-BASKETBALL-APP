@@ -158,10 +158,9 @@ function renderTxnList(txns) {
     <table class="bgt-table">
       <thead>
         <tr>
-          <th>Date</th>
-          <th>Product &amp; Buyer</th>
-          <th style="text-align:right">Profit</th>
+          <th>Item</th>
           <th style="text-align:right">Sale</th>
+          <th style="text-align:right">Profit</th>
           <th></th>
         </tr>
       </thead>
@@ -169,25 +168,24 @@ function renderTxnList(txns) {
         ${txns.map(t => {
           const profit = t.profit ?? (t.soldPrice - (t.cost || 0));
           const pos    = profit >= 0;
+          const hasCost = t.cost != null && t.cost > 0;
           return `
             <tr>
-              <td class="bgt-date-cell">
-                <span style="display:flex;align-items:center;gap:5px">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                  ${escHtml(fmtDate(t.date))}
-                </span>
-              </td>
               <td>
                 <div style="font-weight:700;color:#0f172a;font-size:13px">${escHtml(t.item || '—')}</div>
-                ${t.client ? `<div style="font-size:11px;color:#10b981;margin-top:2px">Sold to ${escHtml(t.client)}</div>` : ''}
+                <div style="font-size:11px;color:#94a3b8;margin-top:2px">
+                  ${escHtml(fmtDate(t.date))}${t.client ? ` · ${escHtml(t.client)}` : ''}
+                </div>
               </td>
-              <td class="bgt-amount-cell" style="color:${pos ? '#10b981' : '#ef4444'}">
-                ${t.cost ? `${pos ? '+' : ''}${fmtMoney(profit)}` : '—'}
+              <td class="bgt-amount-cell" style="font-size:14px;font-weight:700;color:#0f172a">${fmtMoney(t.soldPrice || 0)}</td>
+              <td class="bgt-amount-cell">
+                ${hasCost
+                  ? `<span style="font-size:14px;font-weight:700;color:${pos ? '#10b981' : '#ef4444'}">${pos ? '+' : ''}${fmtMoney(profit)}</span>`
+                  : `<span style="color:#cbd5e1">—</span>`}
               </td>
-              <td class="bgt-amount-cell">${fmtMoney(t.soldPrice || 0)}</td>
               <td style="text-align:right">
                 <button onclick="window.removeTransaction('${t.id}')"
-                  style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:16px;padding:0 4px;line-height:1">×</button>
+                  style="background:none;border:none;cursor:pointer;color:#cbd5e1;font-size:16px;padding:0 4px;line-height:1;transition:color 0.15s" onmouseenter="this.style.color='#ef4444'" onmouseleave="this.style.color='#cbd5e1'">×</button>
               </td>
             </tr>`;
         }).join('')}
