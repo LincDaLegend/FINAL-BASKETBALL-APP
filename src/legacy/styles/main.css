@@ -490,7 +490,8 @@ button {
 .listing-price {
   text-align: right;
   flex-shrink: 0;
-  min-width: 72px;
+  min-width: 130px;
+  width: 130px;
 }
 
 .price-usd {

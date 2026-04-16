@@ -55,6 +55,10 @@ export const state = {
   gasWriteUrl: load('gasWriteUrl', ''),
   scpToken:    load('scpToken', ''),
 
+  // Search tools
+  targetMarginPct: load('targetMarginPct', 30),
+  estShippingPhp:  load('estShippingPhp', 100),
+
   // New transaction form (transient)
   newTxn: { date: '', client: '', itemSearch: '', selectedItem: null, soldPrice: '' },
   logFormOpen: false,
@@ -138,6 +142,8 @@ export function persistSettings() {
   save('setRarityTiers',     state.setRarityTiers);
   save('gasWriteUrl',        state.gasWriteUrl);
   save('scpToken',           state.scpToken);
+  save('targetMarginPct',    state.targetMarginPct);
+  save('estShippingPhp',     state.estShippingPhp);
 }
 
 export function dealStats() {

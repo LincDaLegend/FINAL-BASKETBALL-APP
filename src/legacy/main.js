@@ -182,6 +182,18 @@ window.toggleLogForm = () => {
   window.renderApp();
 };
 
+window.setTargetMargin = (val) => {
+  state.targetMarginPct = parseInt(val) || 0;
+  import('./utils/state.js').then(({ persistSettings }) => persistSettings());
+  window.renderApp();
+};
+
+window.setEstShipping = (val) => {
+  state.estShippingPhp = parseFloat(val) || 0;
+  import('./utils/state.js').then(({ persistSettings }) => persistSettings());
+  window.renderApp();
+};
+
 window.setExpenseCatFilter = (f) => {
   state.expenseCatFilter = f;
   window.renderApp();

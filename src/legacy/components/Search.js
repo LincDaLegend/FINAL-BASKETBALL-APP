@@ -4,6 +4,9 @@ import { extractFeatures, topFeatures } from '../utils/ml.js';
 import { CAT_BADGE_CLASS, CAT_LABEL, DEFAULT_RULES, DEFAULT_PLAYER_CATEGORIES, SAMPLE_DEALS } from '../utils/constants.js';
 
 export function renderSearch() {
+  const margin = state.targetMarginPct ?? 30;
+  const ship   = state.estShippingPhp  ?? 100;
+
   return `
     <div class="page-title">Search Listings</div>
     <div class="page-subtitle">Live eBay search · Scored using your deal history</div>
@@ -22,20 +25,42 @@ export function renderSearch() {
           ${state.loading ? '<span>Searching…</span>' : '<span>Search eBay</span>'}
         </button>
       </div>
-      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap;justify-content:space-between">
-        <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-          <div style="display:flex;gap:4px;align-items:center">
-            <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-right:4px">Type</span>
-            ${[['all','All'],['fixed','Buy It Now'],['auction','Auction']].map(([v,l]) => `
-              <button class="pill ${state.listingType === v ? 'active' : ''}" onclick="window.setListingType('${v}')">${l}</button>
-            `).join('')}
+
+      <div style="display:flex;gap:20px;align-items:flex-end;flex-wrap:wrap;padding:12px 14px;background:var(--bg-surface);border-radius:8px;margin-bottom:10px">
+        <div style="flex:1;min-width:200px">
+          <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Target Profit</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <input type="range" min="0" max="200" step="5" value="${margin}"
+              oninput="window.setTargetMargin(this.value)"
+              style="flex:1;accent-color:var(--accent);height:4px;cursor:pointer;background:none;border:none;padding:0"
+            />
+            <span style="font-size:15px;font-weight:700;color:var(--accent);min-width:44px;text-align:right">${margin}%</span>
           </div>
-          <div style="display:flex;gap:4px;align-items:center">
-            <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-right:4px">Location</span>
-            ${[['us','US only'],['all','Worldwide']].map(([v,l]) => `
-              <button class="pill ${state.itemLocation === v ? 'active' : ''}" onclick="window.setItemLocation('${v}')">${l}</button>
-            `).join('')}
+        </div>
+        <div style="min-width:130px">
+          <div style="font-size:10px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Est. Shipping Out</div>
+          <div style="display:flex;align-items:center;gap:4px">
+            <span style="font-size:13px;color:var(--text-muted)">₱</span>
+            <input type="number" min="0" step="10" value="${ship}"
+              oninput="window.setEstShipping(this.value)"
+              style="width:90px;padding:6px 8px;font-size:13px;font-weight:600"
+            />
           </div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+        <div style="display:flex;gap:4px;align-items:center">
+          <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-right:4px">Type</span>
+          ${[['all','All'],['fixed','Buy It Now'],['auction','Auction']].map(([v,l]) => `
+            <button class="pill ${state.listingType === v ? 'active' : ''}" onclick="window.setListingType('${v}')">${l}</button>
+          `).join('')}
+        </div>
+        <div style="display:flex;gap:4px;align-items:center">
+          <span style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-right:4px">Location</span>
+          ${[['us','US only'],['all','Worldwide']].map(([v,l]) => `
+            <button class="pill ${state.itemLocation === v ? 'active' : ''}" onclick="window.setItemLocation('${v}')">${l}</button>
+          `).join('')}
         </div>
       </div>
     </div>
@@ -110,6 +135,9 @@ function renderResults() {
     return (b.aiScore || 0) - (a.aiScore || 0);
   });
 
+  const margin = state.targetMarginPct ?? 30;
+  const ship   = state.estShippingPhp  ?? 100;
+
   return sorted.map(r => {
     const score   = r.aiScore || 0;
     const verdict = scoreVerdict(score).label;
@@ -118,12 +146,17 @@ function renderResults() {
     const scoreLetterCls = score >= 70 ? 'score-A' : score >= 45 ? 'score-B' : 'score-C';
     const scaledScore = score >= 70 ? 'A' : score >= 45 ? 'B' : 'C';
     const totalPrice = r.price + (r.shippingCost || 0);
-    const phpPrice = toPhp(totalPrice, state.phpRate);
+    const phpPrice   = toPhp(totalPrice, state.phpRate);        // e.g. ₱1,463
+    const phpNum     = totalPrice * (state.phpRate || 57.2);    // numeric PHP cost
+    const targetSellPhp = phpNum * (1 + margin / 100) + ship;   // breakeven sell price
+    const fmtPhp = n => '₱' + Math.round(n).toLocaleString('en-PH');
+
     const isAuction = r.buyingOption === 'AUCTION' || r.buyingOption === 'AUCTION_WITH_BIN';
     const tLeft = isAuction ? timeLeft(r.endTime) : null;
-    // Urgency colour: red if < 1h, amber if < 4h, otherwise neutral
     const tLeftMs = r.endTime ? new Date(r.endTime) - Date.now() : Infinity;
     const tCls = tLeftMs < 3600000 ? 'badge-skip' : tLeftMs < 14400000 ? 'badge-consider' : 'badge-gray';
+
+    const watched = (state.watchlist || []).includes(r.itemId);
 
     return `
       <div class="listing-card">
@@ -145,7 +178,7 @@ function renderResults() {
             ${pCatBadge}
             ${isAuction ? `<span class="badge badge-gray">Auction</span>` : ''}
             ${tLeft ? `<span class="badge ${tCls}">⏱ ${tLeft}</span>` : ''}
-<span class="badge badge-pink">aesthetic ${r.aestheticScore}/10</span>
+            <span class="badge badge-pink">aesthetic ${r.aestheticScore}/10</span>
           </div>`;
           })()}
 
@@ -165,31 +198,43 @@ function renderResults() {
             </div>
           </div>
 
-          <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center">
-            ${r.viewUrl
-              ? `<a class="ebay-link" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener">view on eBay →</a>`
-              : ''}
-            ${r.itemId ? (() => {
-              const watched = (state.watchlist || []).includes(r.itemId);
-              return `<button
-                class="btn-ghost btn-sm"
-                onclick="window.toggleWatch('${r.itemId}', '${escHtml(r.title)}')"
-                style="gap:4px;display:inline-flex;align-items:center"
-                title="${watched ? 'Remove from watchlist' : 'Add to eBay watchlist'}"
-              >${watched ? '♥' : '♡'} ${watched ? 'Watching' : 'Watch'}</button>`;
-            })() : ''}
+          <!-- Price + Target Sell row -->
+          <div style="display:flex;gap:0;margin-top:10px;border:1px solid var(--border);border-radius:8px;overflow:hidden">
+            <div style="flex:1;padding:8px 12px">
+              <div style="font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Card Price</div>
+              <div style="font-size:20px;font-weight:700;color:var(--text-primary);font-family:var(--mono);line-height:1">$${totalPrice.toFixed(2)}</div>
+              ${r.shippingCost > 0
+                ? `<div style="font-size:10px;color:var(--text-muted);margin-top:2px">$${r.price.toFixed(2)} + $${r.shippingCost.toFixed(2)} ship</div>`
+                : `<div style="font-size:10px;color:var(--green);margin-top:2px">free shipping</div>`}
+              <div style="font-size:12px;color:var(--text-muted);margin-top:2px">${phpPrice}</div>
+            </div>
+            <div style="width:1px;background:var(--border)"></div>
+            <div style="flex:1;padding:8px 12px;background:var(--bg-surface)">
+              <div style="font-size:9px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px">Target Selling Price</div>
+              <div style="font-size:20px;font-weight:700;color:var(--green);font-family:var(--mono);line-height:1">${fmtPhp(targetSellPhp)}</div>
+              <div style="font-size:10px;color:var(--text-muted);margin-top:2px">${margin}% profit · ₱${Math.round(ship)} ship out</div>
+              <div style="font-size:10px;color:var(--text-muted)">profit: ${fmtPhp(phpNum * margin / 100)}</div>
+            </div>
           </div>
+
+          ${r.viewUrl
+            ? `<a class="ebay-link" href="${escHtml(r.viewUrl)}" target="_blank" rel="noopener" style="margin-top:8px;display:inline-block">view on eBay →</a>`
+            : ''}
         </div>
 
-        <div class="listing-price">
+        <div class="listing-price" style="min-width:130px">
           <div class="score-ring ${scoreLetterCls}">${scaledScore}</div>
-          <div class="price-usd" style="margin-top:8px">$${totalPrice.toFixed(2)}</div>
-          ${r.shippingCost > 0
-            ? `<div style="font-size:10px;color:var(--text-muted)">$${r.price.toFixed(2)} + $${r.shippingCost.toFixed(2)} ship</div>`
-            : `<div style="font-size:10px;color:var(--green)">free shipping</div>`}
-          <div class="price-php">${phpPrice}</div>
-          <div style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border)">
-            <div style="font-size:10px;color:var(--text-muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:0.4px">Market · ${r.grade}${r._marketLabel ? ` · ${r._marketLabel}` : ''}</div>
+
+          <!-- Big watchlist button -->
+          ${r.itemId ? `
+          <button
+            onclick="window.toggleWatch('${r.itemId}', '${escHtml(r.title)}')"
+            style="margin-top:10px;width:100%;padding:9px 0;border-radius:8px;border:1.5px solid ${watched ? 'var(--accent)' : 'var(--border)'};background:${watched ? 'var(--accent-dim)' : 'var(--bg)'};color:${watched ? 'var(--accent)' : 'var(--text-muted)'};font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:5px;transition:all 0.15s"
+          >${watched ? '♥' : '♡'} ${watched ? 'Watching' : 'Watchlist'}</button>` : ''}
+
+          <!-- Market price -->
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border)">
+            <div style="font-size:9px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.4px;margin-bottom:4px">Market · ${r.grade}${r._marketLabel ? ` · ${r._marketLabel}` : ''}</div>
             ${r.marketValue != null ? (() => {
               const roi = r.realRoiPct ?? 0;
               const cls = roi >= 20 ? 'badge-buy' : roi >= 0 ? 'badge-consider' : 'badge-skip';
@@ -198,12 +243,13 @@ function renderResults() {
               const trendLabel = r.trendDir === 'up' ? 'trending' : r.trendDir === 'down' ? 'cooling' : 'stable';
               const trendCls   = r.trendDir === 'up' ? 'badge-buy' : r.trendDir === 'down' ? 'badge-skip' : 'badge-gray';
               const trendPct   = r.trend != null ? ` ${r.trend > 0 ? '+' : ''}${r.trend}%` : '';
-              return `<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                <span style="font-size:13px;font-weight:600;color:var(--text)">~$${r.marketValue.toFixed(0)}</span>
-                <span class="badge ${cls}">${sign}${roi}% vs mkt</span>
-                ${r.trendDir ? `<span class="badge ${trendCls}">${trendIcon} ${trendLabel}${trendPct}</span>` : ''}
-              </div>`;
-            })() : `<span style="font-size:12px;color:var(--text-muted)">-- (no sold data)</span>`}
+              return `
+                <div style="font-size:14px;font-weight:700;color:var(--text-primary)">~$${r.marketValue.toFixed(0)}</div>
+                <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+                  <span class="badge ${cls}">${sign}${roi}% vs mkt</span>
+                  ${r.trendDir ? `<span class="badge ${trendCls}">${trendIcon} ${trendLabel}${trendPct}</span>` : ''}
+                </div>`;
+            })() : `<span style="font-size:11px;color:var(--text-muted)">-- no data</span>`}
           </div>
         </div>
       </div>
