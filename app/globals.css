@@ -1,5 +1,9 @@
-/* Next.js global styles.
-   The actual app styling is imported from the legacy CSS. */
+/* Outfit font for business UI — must be first @import */
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
 
+/* Legacy app styles */
 @import "../src/legacy/styles/main.css";
+
+/* Tailwind v4 — utilities only (no preflight reset to avoid breaking legacy styles) */
+@import "tailwindcss/utilities";
 

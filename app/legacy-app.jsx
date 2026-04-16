@@ -24,6 +24,6 @@ export default function LegacyApp() {
     };
   }, []);
 
-  return <div id="app" suppressHydrationWarning />;
+  return <div id="app" suppressHydrationWarning style={{ display: 'none' }} />;
 }
 

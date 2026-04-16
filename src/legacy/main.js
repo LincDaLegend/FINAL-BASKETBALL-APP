@@ -294,30 +294,30 @@ window.submitTransaction = async () => {
   // Sync to Google Sheet if configured
   if (state.gasWriteUrl) {
     try {
-      // 1. Append to Sales 2026
+      // 1. Append to Baller Sales
       await fetch('/api/sheets/write', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           gasUrl: state.gasWriteUrl,
           action: 'append',
-          sheet:  'Sales 2026',
-          row:    [date, client, itemName, cost, soldPrice, 'Sold'],
+          sheet:  'Baller Sales',
+          row:    [date, itemName, client, cost, soldPrice, soldPrice - cost, ''],
         }),
       });
-      // 2. Mark item as Sold in Inventory 2026
+      // 2. Mark item as Sold in Baller Inventory
       await fetch('/api/sheets/write', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
           gasUrl:   state.gasWriteUrl,
           action:   'updateRow',
-          sheet:    'Inventory 2026',
+          sheet:    'Baller Inventory',
           matchCol: 'Item Name',
           matchVal: itemName,
           updates:  [
-            { col: 'Sale Price', val: soldPrice },
-            { col: 'Status',     val: 'Sold'    },
+            { col: 'Target Price', val: soldPrice },
+            { col: 'Status',       val: 'Sold'    },
           ],
         }),
       });
