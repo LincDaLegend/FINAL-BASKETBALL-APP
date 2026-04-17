@@ -8,11 +8,7 @@ module.exports = {
     preflight: false, // keep legacy search styles intact
   },
   theme: {
-    extend: {
-      fontFamily: {
-        sans: ['Outfit', 'sans-serif'],
-      },
-    },
+    extend: {},
   },
   plugins: [],
 };

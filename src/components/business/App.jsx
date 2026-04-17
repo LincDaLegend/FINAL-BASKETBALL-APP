@@ -63,6 +63,26 @@ export default function BusinessApp() {
     }
   };
 
+  // Search tab: show legacy app full-screen, no business layout wrapper
+  if (activeTab === 'search') {
+    return (
+      <>
+        {/* Minimal nav strip so the user can get back */}
+        <div style={{ position: 'fixed', top: 0, left: 0, zIndex: 1000, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', background: '#1e293b', width: '100%' }}>
+          <button
+            onClick={() => setActiveTab('dashboard')}
+            style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
+          >
+            ← Back to Baller
+          </button>
+          <span style={{ color: '#334155', fontSize: 12 }}>|</span>
+          <span style={{ color: '#64748b', fontSize: 12, fontWeight: 600 }}>Search eBay</span>
+        </div>
+        <div id="app" suppressHydrationWarning style={{ paddingTop: 40 }} />
+      </>
+    );
+  }
+
   return (
     <Layout
       activeTab={activeTab}
@@ -71,13 +91,6 @@ export default function BusinessApp() {
       isSyncing={isSyncing}
       autoSyncEnabled={data.autoSyncEnabled}
     >
-      {/* Legacy search app rendered in its own div — always in the DOM
-          so the legacy script stays mounted; hidden when not on search tab */}
-      <div
-        id="app"
-        suppressHydrationWarning
-        style={{ display: activeTab === 'search' ? '' : 'none' }}
-      />
       {renderTab()}
     </Layout>
   );

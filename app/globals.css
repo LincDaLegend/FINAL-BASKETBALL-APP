@@ -1,9 +1,14 @@
-/* Outfit font for business UI — must be first @import */
-@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap');
-
 /* Legacy app styles */
 @import "../src/legacy/styles/main.css";
 
 /* Tailwind v3 — utilities only, no preflight so legacy styles stay intact */
 @tailwind utilities;
+
+/* Without Tailwind's preflight, browsers apply a grey ButtonFace background
+   to <button> elements. Reset it so our explicit bg-* classes take over. */
+button {
+  background-color: transparent;
+  background-image: none;
+  border-color: transparent;
+}
 

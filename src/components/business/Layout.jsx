@@ -16,7 +16,7 @@ export default function Layout({ children, activeTab, setActiveTab, onSync, isSy
   ];
 
   return (
-    <div className="min-h-screen flex bg-slate-50 text-slate-900" style={{ fontFamily: "'Outfit', sans-serif" }}>
+    <div className="min-h-screen flex bg-slate-50 text-slate-900">
       {sidebarOpen && (
         <div className="fixed inset-0 bg-slate-900/50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
