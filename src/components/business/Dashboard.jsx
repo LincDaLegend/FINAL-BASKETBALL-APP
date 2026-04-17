@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { ChevronLeft, ChevronRight, Calendar, Target, PieChart as PieChartIcon, BarChart as BarChartIcon, ArrowUpRight, ArrowDownRight, Plus, Package, ShoppingCart, Receipt } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Cell } from 'recharts';
 import { PaymentStatus, fmt, fmtExact } from './store.js';

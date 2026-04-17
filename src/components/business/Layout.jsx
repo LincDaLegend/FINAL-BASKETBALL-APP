@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { LayoutDashboard, Package, ShoppingCart, Menu, X, Box, Receipt, PackageOpen, Truck, Settings, RefreshCw, CloudCheck, Cloud, Search } from 'lucide-react';
 
 export default function Layout({ children, activeTab, setActiveTab, onSync, isSyncing, autoSyncEnabled }) {

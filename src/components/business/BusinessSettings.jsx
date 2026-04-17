@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Settings, Save, Trash2, Download, Upload, RefreshCw, AlertTriangle, Plus, X, CheckCircle } from 'lucide-react';
 
 export default function BusinessSettings({ data, update, onSync, isSyncing }) {

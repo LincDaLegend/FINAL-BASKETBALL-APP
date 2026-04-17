@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { PackageOpen, CheckCircle, Package, Clock, ChevronDown, ChevronRight, Truck } from 'lucide-react';
 import { SaleStatus, PaymentStatus, fmt, fmtExact } from './store.js';
 

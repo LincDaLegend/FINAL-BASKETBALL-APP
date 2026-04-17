@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Plus, Trash2, ShoppingCart, DollarSign, Package, Search, X, ChevronDown, Tag, TrendingUp, Clock } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Plus, Trash2, ShoppingCart, DollarSign, Search, X, TrendingUp, Clock } from 'lucide-react';
 import { SaleStatus, PaymentStatus, fmt, fmtExact, genId } from './store.js';
 
 const SALE_TYPES = ['Sale', 'Auction', 'Firesale'];

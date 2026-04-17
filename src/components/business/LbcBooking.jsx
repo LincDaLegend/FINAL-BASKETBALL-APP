@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Truck, Plus, Trash2, Package, X, Copy, CheckCircle } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Truck, Plus, Trash2, X, Copy, CheckCircle } from 'lucide-react';
 import { SaleStatus, fmt, genId } from './store.js';
 
 const LBC_RATES = [
