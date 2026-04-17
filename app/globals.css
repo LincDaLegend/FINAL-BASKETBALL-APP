@@ -4,6 +4,10 @@
 /* Legacy app styles */
 @import "../src/legacy/styles/main.css";
 
-/* Tailwind v4 — utilities only (no preflight reset to avoid breaking legacy styles) */
+/* Tailwind v4 — tell it where to scan for class names */
+@source "../src/components/business/**/*.{jsx,js}";
+@source "../app/**/*.{jsx,js}";
+
+/* Utilities only — no preflight reset so legacy styles aren't clobbered */
 @import "tailwindcss/utilities";
 
