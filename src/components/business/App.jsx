@@ -61,35 +61,46 @@ export default function BusinessApp() {
     }
   };
 
-  // Search tab: show legacy app full-screen, no business layout wrapper
-  if (activeTab === 'search') {
-    return (
-      <>
-        {/* Minimal nav strip so the user can get back */}
+  const onSearch = activeTab === 'search';
+
+  return (
+    <>
+      {/* #app must ALWAYS stay in the DOM so the legacy script never loses
+          its reference. We show/hide it with CSS, never unmount it. */}
+      <div
+        id="app"
+        suppressHydrationWarning
+        style={onSearch
+          ? { paddingTop: 40 }
+          : { display: 'none' }}
+      />
+
+      {/* Slim back-strip shown only on Search tab */}
+      {onSearch && (
         <div style={{ position: 'fixed', top: 0, left: 0, zIndex: 1000, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', background: '#1e293b', width: '100%' }}>
           <button
             onClick={() => setActiveTab('dashboard')}
-            style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 6 }}
+            style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
           >
             ← Back to Baller
           </button>
           <span style={{ color: '#334155', fontSize: 12 }}>|</span>
           <span style={{ color: '#64748b', fontSize: 12, fontWeight: 600 }}>Search eBay</span>
         </div>
-        <div id="app" suppressHydrationWarning style={{ paddingTop: 40 }} />
-      </>
-    );
-  }
+      )}
 
-  return (
-    <Layout
-      activeTab={activeTab}
-      setActiveTab={setActiveTab}
-      onSync={handleSync}
-      isSyncing={isSyncing}
-      autoSyncEnabled={data.autoSyncEnabled}
-    >
-      {renderTab()}
-    </Layout>
+      {/* Business layout — hidden (not unmounted) while Search is active */}
+      {!onSearch && (
+        <Layout
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          onSync={handleSync}
+          isSyncing={isSyncing}
+          autoSyncEnabled={data.autoSyncEnabled}
+        >
+          {renderTab()}
+        </Layout>
+      )}
+    </>
   );
 }
