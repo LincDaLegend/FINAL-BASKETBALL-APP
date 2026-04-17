@@ -5,7 +5,6 @@ import Inventory from './Inventory.jsx';
 import Sales from './Sales.jsx';
 import HeldOrders from './HeldOrders.jsx';
 import Expenses from './Expenses.jsx';
-import LbcBooking from './LbcBooking.jsx';
 import BusinessSettings from './BusinessSettings.jsx';
 import { useBusinessStore } from './store.js';
 
@@ -56,7 +55,6 @@ export default function BusinessApp() {
       case 'sales':        return <Sales data={data} update={update} />;
       case 'held-orders':  return <HeldOrders data={data} update={update} />;
       case 'expenses':     return <Expenses data={data} update={update} />;
-      case 'lbc-booking':  return <LbcBooking data={data} update={update} />;
       case 'settings':     return <BusinessSettings data={data} update={update} onSync={handleSync} isSyncing={isSyncing} />;
       case 'search':       return null;
       default:             return null;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutDashboard, Package, ShoppingCart, Menu, X, Box, Receipt, PackageOpen, Truck, Settings, RefreshCw, CloudCheck, Cloud, Search } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, Menu, X, Box, Receipt, PackageOpen, Settings, RefreshCw, CloudCheck, Search } from 'lucide-react';
 
 export default function Layout({ children, activeTab, setActiveTab, onSync, isSyncing, autoSyncEnabled }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -11,7 +11,6 @@ export default function Layout({ children, activeTab, setActiveTab, onSync, isSy
     { id: 'sales',        label: 'Sales',               icon: ShoppingCart },
     { id: 'held-orders',  label: 'Packages on Hold',    icon: PackageOpen },
     { id: 'expenses',     label: 'Expenses',            icon: Receipt },
-    { id: 'lbc-booking',  label: 'LBC Integration',     icon: Truck },
     { id: 'settings',     label: 'Settings & Data',     icon: Settings },
   ];
 
