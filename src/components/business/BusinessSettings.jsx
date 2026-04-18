@@ -1,17 +1,75 @@
 import { useState } from 'react';
-import { Settings, Save, Trash2, Download, Upload, RefreshCw, AlertTriangle, Plus, X, CheckCircle } from 'lucide-react';
+import { Settings, Save, Trash2, Download, Upload, RefreshCw, AlertTriangle, Plus, X, CheckCircle, ExternalLink, Eye, EyeOff } from 'lucide-react';
+
+// Read/write directly to the legacy localStorage keys
+const ls = {
+  get: (k, fallback = '') => { try { return localStorage.getItem(k) ?? fallback; } catch { return fallback; } },
+  set: (k, v) => { try { localStorage.setItem(k, v); } catch {} },
+  del: (k) => { try { localStorage.removeItem(k); } catch {} },
+};
 
 export default function BusinessSettings({ data, update, onSync, isSyncing }) {
   const [sheetsUrl, setSheetsUrl] = useState(data.googleSheetsUrl || '');
-  const [phpRate, setPhpRate] = useState(data.phpRate || 57.2);
+  const [phpRate,   setPhpRate]   = useState(data.phpRate || 57.2);
   const [newCategory, setNewCategory] = useState('');
   const [saved, setSaved] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState('');
 
+  // eBay credentials — stored in legacy localStorage keys
+  const [ebayKey,    setEbayKey]    = useState(() => ls.get('ebayKey'));
+  const [ebaySecret, setEbaySecret] = useState(() => ls.get('ebaySecret'));
+  const [ebayRuName, setEbayRuName] = useState(() => ls.get('ebayRuName'));
+  const [scpToken,   setScpToken]   = useState(() => ls.get('scpToken'));
+  const [showSecret, setShowSecret] = useState(false);
+  const [ebaySaved,  setEbaySaved]  = useState(false);
+
+  const ebayUser    = ls.get('ebayUser', null);
+  const ebayTokenExp = parseInt(ls.get('ebayTokenExp', '0')) || 0;
+  const tokenValid  = ebayTokenExp > Date.now() / 1000;
+
   const saveSettings = () => {
     update(prev => ({ ...prev, googleSheetsUrl: sheetsUrl, phpRate: parseFloat(phpRate) || prev.phpRate }));
+    // Also sync into legacy state
+    import('../../legacy/utils/state.js').then(({ state: ls2, persistSettings }) => {
+      ls2.phpRate     = parseFloat(phpRate) || ls2.phpRate;
+      ls2.gasWriteUrl = sheetsUrl;
+      persistSettings?.();
+    }).catch(() => {});
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
+  };
+
+  const saveEbayCredentials = () => {
+    ls.set('ebayKey',    ebayKey.trim());
+    ls.set('ebaySecret', ebaySecret.trim());
+    ls.set('ebayRuName', ebayRuName.trim());
+    ls.set('scpToken',   scpToken.trim());
+    // Sync into running legacy state if available
+    import('../../legacy/utils/state.js').then(({ state: ls2, persistSettings }) => {
+      ls2.ebayKey    = ebayKey.trim();
+      ls2.ebaySecret = ebaySecret.trim();
+      ls2.ebayRuName = ebayRuName.trim();
+      ls2.scpToken   = scpToken.trim();
+      persistSettings?.();
+    }).catch(() => {});
+    setEbaySaved(true);
+    setTimeout(() => setEbaySaved(false), 2000);
+  };
+
+  const clearEbayCredentials = () => {
+    ['ebayKey','ebaySecret','ebayRuName','ebayToken','ebayTokenExp','ebayRefresh','ebayUser'].forEach(k => ls.del(k));
+    setEbayKey(''); setEbaySecret(''); setEbayRuName('');
+    import('../../legacy/utils/state.js').then(({ state: ls2 }) => {
+      ls2.ebayKey = ''; ls2.ebaySecret = ''; ls2.ebayRuName = '';
+      ls2.ebayToken = null; ls2.ebayUser = null;
+    }).catch(() => {});
+  };
+
+  const connectEbayAccount = () => {
+    if (!ebayKey.trim() || !ebaySecret.trim() || !ebayRuName.trim()) return;
+    // Save first, then trigger the legacy OAuth flow
+    saveEbayCredentials();
+    setTimeout(() => window.connectEbayAccount?.(), 100);
   };
 
   const addCategory = () => {
@@ -40,24 +98,28 @@ export default function BusinessSettings({ data, update, onSync, isSyncing }) {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (ev) => {
-      try {
-        const imported = JSON.parse(ev.target.result);
-        update(() => imported);
-      } catch {
-        alert('Invalid file format.');
-      }
+      try { update(() => JSON.parse(ev.target.result)); }
+      catch { alert('Invalid file format.'); }
     };
     reader.readAsText(file);
     e.target.value = '';
   };
 
   const resetSection = (section) => {
-    if (section === 'sales') update(prev => ({ ...prev, sales: [] }));
+    if (section === 'sales')     update(prev => ({ ...prev, sales: [] }));
     if (section === 'inventory') update(prev => ({ ...prev, inventory: [] }));
-    if (section === 'expenses') update(prev => ({ ...prev, expenses: [] }));
-    if (section === 'all') update(prev => ({ ...prev, sales: [], inventory: [], expenses: [], shippingBatches: [] }));
+    if (section === 'expenses')  update(prev => ({ ...prev, expenses: [] }));
+    if (section === 'all')       update(prev => ({ ...prev, sales: [], inventory: [], expenses: [], shippingBatches: [] }));
     setShowResetConfirm('');
   };
+
+  const Field = ({ label, hint, children }) => (
+    <div>
+      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">{label}</label>
+      {children}
+      {hint && <p className="text-xs text-slate-400 mt-1">{hint}</p>}
+    </div>
+  );
 
   const Section = ({ title, icon: Icon, children }) => (
     <div className="bg-white rounded-2xl border border-slate-200 shadow-sm">
@@ -69,25 +131,25 @@ export default function BusinessSettings({ data, update, onSync, isSyncing }) {
     </div>
   );
 
+  const inputCls = "w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono";
+
   return (
     <div className="space-y-6 max-w-2xl">
+
       {/* General */}
       <Section title="General Settings" icon={Settings}>
         <div className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">PHP Exchange Rate (₱ per $1)</label>
+          <Field label="PHP Exchange Rate (₱ per $1)">
             <input type="number" min="1" step="0.1" value={phpRate} onChange={e => setPhpRate(e.target.value)}
               className="w-40 px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Google Apps Script URL</label>
+          </Field>
+          <Field label="Google Apps Script URL" hint="Used for syncing sales and inventory data to Google Sheets.">
             <input value={sheetsUrl} onChange={e => setSheetsUrl(e.target.value)}
-              className="w-full px-3 py-2.5 border border-slate-200 rounded-xl text-sm bg-slate-50 focus:outline-none focus:ring-2 focus:ring-emerald-500 font-mono text-xs"
+              className={inputCls + " text-xs"}
               placeholder="https://script.google.com/macros/s/…"
             />
-            <p className="text-xs text-slate-400 mt-1.5">Used for syncing sales and inventory data to Google Sheets.</p>
-          </div>
+          </Field>
           <div className="flex gap-3">
             <button onClick={saveSettings}
               className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 text-white rounded-xl font-bold text-sm hover:bg-slate-700 transition-colors"
@@ -104,6 +166,109 @@ export default function BusinessSettings({ data, update, onSync, isSyncing }) {
               </button>
             )}
           </div>
+        </div>
+      </Section>
+
+      {/* eBay API */}
+      <Section title="eBay API Credentials" icon={Settings}>
+        <div className="space-y-4">
+          <p className="text-xs text-slate-400">
+            Get your keys at{' '}
+            <a href="https://developer.ebay.com" target="_blank" rel="noopener"
+              className="text-emerald-600 font-semibold hover:underline inline-flex items-center gap-1">
+              developer.ebay.com <ExternalLink className="w-3 h-3" />
+            </a>
+            {' '}→ Application Keys.
+          </p>
+
+          <Field label="App ID (Client ID)">
+            <input value={ebayKey} onChange={e => setEbayKey(e.target.value)}
+              className={inputCls} placeholder="AppID-…" />
+          </Field>
+
+          <Field label="Client Secret (Cert ID)">
+            <div className="relative">
+              <input
+                type={showSecret ? 'text' : 'password'}
+                value={ebaySecret} onChange={e => setEbaySecret(e.target.value)}
+                className={inputCls + " pr-10"} placeholder="••••••••"
+              />
+              <button type="button" onClick={() => setShowSecret(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </Field>
+
+          <Field
+            label="RuName"
+            hint="From eBay developer portal → User Tokens → Get a Token from eBay via Your Application."
+          >
+            <input value={ebayRuName} onChange={e => setEbayRuName(e.target.value)}
+              className={inputCls} placeholder="YourApp-YourApp-Prod-…" />
+          </Field>
+
+          {/* Account status */}
+          <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-0.5">eBay Account</p>
+              {ebayUser
+                ? <p className="text-sm font-semibold text-emerald-600">✓ Connected as {ebayUser}{tokenValid ? '' : ' (token expired)'}</p>
+                : <p className="text-sm text-slate-400">Not connected</p>}
+            </div>
+            {ebayUser
+              ? <button onClick={clearEbayCredentials}
+                  className="text-xs font-bold text-red-500 hover:text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-colors">
+                  Disconnect
+                </button>
+              : <button onClick={connectEbayAccount}
+                  disabled={!ebayKey.trim() || !ebaySecret.trim() || !ebayRuName.trim()}
+                  className="text-xs font-bold bg-slate-800 text-white px-3 py-1.5 rounded-lg hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  Connect Account
+                </button>}
+          </div>
+
+          <div className="flex gap-3">
+            <button onClick={saveEbayCredentials}
+              className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 text-white rounded-xl font-bold text-sm hover:bg-slate-700 transition-colors"
+            >
+              {ebaySaved ? <CheckCircle className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+              {ebaySaved ? 'Saved!' : 'Save Credentials'}
+            </button>
+            {ebayKey && (
+              <button onClick={clearEbayCredentials}
+                className="flex items-center gap-2 px-4 py-2.5 bg-red-50 text-red-600 rounded-xl font-bold text-sm hover:bg-red-100 transition-colors border border-red-100"
+              >
+                <X className="w-4 h-4" /> Clear All
+              </button>
+            )}
+          </div>
+        </div>
+      </Section>
+
+      {/* SportsCardsPro */}
+      <Section title="SportsCardsPro Token" icon={Settings}>
+        <div className="space-y-3">
+          <p className="text-xs text-slate-400">
+            Find your token at{' '}
+            <a href="https://www.sportscardspro.com" target="_blank" rel="noopener"
+              className="text-emerald-600 font-semibold hover:underline inline-flex items-center gap-1">
+              sportscardspro.com <ExternalLink className="w-3 h-3" />
+            </a>
+            {' '}→ Account Settings. Enables real sold-price data in search results.
+          </p>
+          <input value={scpToken} onChange={e => setScpToken(e.target.value)}
+            className={inputCls} placeholder="40-character token" />
+          {scpToken
+            ? <p className="text-xs text-emerald-600 font-semibold">✓ Token saved — market prices use real sold data.</p>
+            : <p className="text-xs text-slate-400">Not configured — market prices use live eBay listing prices.</p>}
+          <button onClick={saveEbayCredentials}
+            className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 text-white rounded-xl font-bold text-sm hover:bg-slate-700 transition-colors"
+          >
+            {ebaySaved ? <CheckCircle className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+            {ebaySaved ? 'Saved!' : 'Save Token'}
+          </button>
         </div>
       </Section>
 
@@ -135,7 +300,7 @@ export default function BusinessSettings({ data, update, onSync, isSyncing }) {
         </div>
       </Section>
 
-      {/* Data Export/Import */}
+      {/* Data Backup */}
       <Section title="Data Backup" icon={Download}>
         <div className="space-y-3">
           <p className="text-sm text-slate-500">Export your data as JSON or import a previously exported file.</p>
@@ -169,23 +334,19 @@ export default function BusinessSettings({ data, update, onSync, isSyncing }) {
               <div className="flex gap-2">
                 <button onClick={() => resetSection(showResetConfirm)}
                   className="px-4 py-2 bg-red-600 text-white rounded-xl font-bold text-sm hover:bg-red-700"
-                >
-                  Yes, Delete
-                </button>
+                >Yes, Delete</button>
                 <button onClick={() => setShowResetConfirm('')}
                   className="px-4 py-2 bg-slate-200 text-slate-700 rounded-xl font-bold text-sm hover:bg-slate-300"
-                >
-                  Cancel
-                </button>
+                >Cancel</button>
               </div>
             </div>
           )}
           <div className="flex flex-wrap gap-2">
             {[
-              { key: 'sales', label: 'Reset Sales' },
+              { key: 'sales',     label: 'Reset Sales' },
               { key: 'inventory', label: 'Reset Inventory' },
-              { key: 'expenses', label: 'Reset Expenses' },
-              { key: 'all', label: 'Reset Everything' },
+              { key: 'expenses',  label: 'Reset Expenses' },
+              { key: 'all',       label: 'Reset Everything' },
             ].map(({ key, label }) => (
               <button key={key} onClick={() => setShowResetConfirm(key)}
                 className={`flex items-center gap-2 px-4 py-2 rounded-xl font-bold text-sm transition-colors ${key === 'all' ? 'bg-red-600 text-white hover:bg-red-700' : 'bg-slate-100 text-slate-600 hover:bg-red-50 hover:text-red-600'}`}
