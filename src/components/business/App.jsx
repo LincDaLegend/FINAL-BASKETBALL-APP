@@ -8,16 +8,16 @@ import Expenses from './Expenses.jsx';
 import BusinessSettings from './BusinessSettings.jsx';
 import { useBusinessStore } from './store.js';
 
-// Lazy-boot the legacy search app only once
-let legacyBooted = false;
-async function bootLegacy() {
-  if (legacyBooted) return;
-  legacyBooted = true;
-  try {
-    await import('../../legacy/main.js');
-  } catch (e) {
-    console.error('Legacy app failed to boot:', e);
+// Lazy-boot the legacy search app only once; returns a promise
+let legacyBootPromise = null;
+function bootLegacy() {
+  if (!legacyBootPromise) {
+    legacyBootPromise = import('../../legacy/main.js').catch(e => {
+      console.error('Legacy app failed to boot:', e);
+      legacyBootPromise = null;
+    });
   }
+  return legacyBootPromise;
 }
 
 export default function BusinessApp() {
@@ -25,12 +25,22 @@ export default function BusinessApp() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [data, update] = useBusinessStore();
 
-  // Boot legacy app when user first visits Search tab
+  // Boot legacy app on first Search visit; sync settings each time
   useEffect(() => {
-    if (activeTab === 'search') {
-      bootLegacy();
-    }
-  }, [activeTab]);
+    if (activeTab !== 'search') return;
+    bootLegacy().then(() => {
+      // Push business store values into legacy state so they stay in sync
+      import('../../legacy/utils/state.js').then(({ state: ls, persistSettings }) => {
+        ls.phpRate     = data.phpRate;
+        ls.gasWriteUrl = data.googleSheetsUrl;
+        if (data.ebayUserToken) ls.ebayToken = data.ebayUserToken;
+        // Lock legacy app to search tab
+        ls.tab = 'search';
+        persistSettings?.();
+        window.renderApp?.();
+      }).catch(() => {});
+    });
+  }, [activeTab, data.phpRate, data.googleSheetsUrl, data.ebayUserToken]);
 
   const handleSync = async () => {
     if (!data.googleSheetsUrl || isSyncing) return;
@@ -61,46 +71,22 @@ export default function BusinessApp() {
     }
   };
 
-  const onSearch = activeTab === 'search';
-
   return (
-    <>
-      {/* #app must ALWAYS stay in the DOM so the legacy script never loses
-          its reference. We show/hide it with CSS, never unmount it. */}
+    <Layout
+      activeTab={activeTab}
+      setActiveTab={setActiveTab}
+      onSync={handleSync}
+      isSyncing={isSyncing}
+      autoSyncEnabled={data.autoSyncEnabled}
+    >
+      {/* #app always in the DOM — legacy script must never lose its node.
+          Visible only on Search tab; all legacy chrome stripped via CSS. */}
       <div
         id="app"
         suppressHydrationWarning
-        style={onSearch
-          ? { paddingTop: 40 }
-          : { display: 'none' }}
+        style={{ display: activeTab === 'search' ? 'block' : 'none' }}
       />
-
-      {/* Slim back-strip shown only on Search tab */}
-      {onSearch && (
-        <div style={{ position: 'fixed', top: 0, left: 0, zIndex: 1000, display: 'flex', alignItems: 'center', gap: 8, padding: '8px 16px', background: '#1e293b', width: '100%' }}>
-          <button
-            onClick={() => setActiveTab('dashboard')}
-            style={{ color: '#94a3b8', background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
-          >
-            ← Back to Baller
-          </button>
-          <span style={{ color: '#334155', fontSize: 12 }}>|</span>
-          <span style={{ color: '#64748b', fontSize: 12, fontWeight: 600 }}>Search eBay</span>
-        </div>
-      )}
-
-      {/* Business layout — hidden (not unmounted) while Search is active */}
-      {!onSearch && (
-        <Layout
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          onSync={handleSync}
-          isSyncing={isSyncing}
-          autoSyncEnabled={data.autoSyncEnabled}
-        >
-          {renderTab()}
-        </Layout>
-      )}
-    </>
+      {renderTab()}
+    </Layout>
   );
 }

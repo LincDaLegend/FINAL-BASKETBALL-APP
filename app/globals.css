@@ -12,3 +12,22 @@ button {
   border-color: transparent;
 }
 
+/* Strip legacy app's own sidebar / topbar / mobile-nav so the search
+   content renders inline inside the business layout like a normal tab. */
+#app .sidebar,
+#app .top-bar,
+#app .mobile-nav {
+  display: none !important;
+}
+#app .app-body {
+  display: block !important;
+}
+#app .main-area {
+  padding: 0 !important;
+  min-height: unset !important;
+}
+#app .main-content {
+  padding: 0 !important;
+  max-width: none !important;
+}
+
