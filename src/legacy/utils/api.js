@@ -173,39 +173,17 @@ function extractParallel(title) {
 // Fetch market prices from SportsCardsPro API.
 // Returns byGrade prices keyed to our grade system, or null on failure.
 export async function fetchSoldMarketValue(query) {
-  if (!state.scpToken) return null;
+  if (!state.rapidApiKey) return null;
   try {
-    const resp = await fetch(`/api/sportscardspro?q=${encodeURIComponent(query)}`, {
-      headers: { 'x-scp-token': state.scpToken },
+    const resp = await fetch(`/api/ebay/sold?q=${encodeURIComponent(query)}`, {
+      headers: { 'x-rapidapi-key': state.rapidApiKey },
     });
     if (!resp.ok) return null;
     const data = await resp.json();
-    if (data?.status !== 'success') {
-      console.warn('[scp]', data?.error);
-      return null;
-    }
-    // Remap bgs9_5 → bgs9.5 to match GRADE_KEY_MAP
-    const byGrade = { ...data.byGrade };
-    if (byGrade.bgs9_5 != null) { byGrade['bgs9.5'] = byGrade.bgs9_5; delete byGrade.bgs9_5; }
-
-    // Filter out null values
-    for (const k of Object.keys(byGrade)) {
-      if (byGrade[k] == null) delete byGrade[k];
-    }
-
-    if (!Object.keys(byGrade).length) return null;
-
-    return {
-      byGrade,
-      weightedMean: byGrade.raw ?? byGrade.psa9 ?? Object.values(byGrade)[0],
-      count:        1,
-      trendDir:     'stable',
-      trend:        null,
-      source:       'sportscardspro',
-      productName:  data.productName,
-    };
+    if (data.error || !data.weightedMean) return null;
+    return { ...data, source: 'rapidapi' };
   } catch (e) {
-    console.warn('[scp] error:', e.message);
+    console.warn('[sold] error:', e.message);
     return null;
   }
 }

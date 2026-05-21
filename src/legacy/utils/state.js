@@ -53,7 +53,7 @@ export const state = {
 
   // Google Apps Script web app URL — used for sheet write operations
   gasWriteUrl: load('gasWriteUrl', ''),
-  scpToken:    load('scpToken', ''),
+  rapidApiKey: load('rapidApiKey', load('scpToken', '')),
 
   // Search tools
   targetMarginPct: load('targetMarginPct', 30),
@@ -141,7 +141,7 @@ export function persistSettings() {
   save('playerCategories',   state.playerCategories);
   save('setRarityTiers',     state.setRarityTiers);
   save('gasWriteUrl',        state.gasWriteUrl);
-  save('scpToken',           state.scpToken);
+  save('rapidApiKey',        state.rapidApiKey);
   save('targetMarginPct',    state.targetMarginPct);
   save('estShippingPhp',     state.estShippingPhp);
 }

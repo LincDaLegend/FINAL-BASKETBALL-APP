@@ -1,32 +1,9 @@
 import { NextResponse } from 'next/server';
 
-const LAMBDA = Math.LN2 / 7; // 7-day half-life
+const LAMBDA = Math.LN2 / 7;
 
 function decayWeight(daysAgo) {
   return Math.exp(-LAMBDA * Math.max(0, daysAgo));
-}
-
-function robustWeightedMean(entries) {
-  if (!entries.length) return null;
-  const sorted = [...entries].sort((a, b) => a.price - b.price);
-  if (sorted.length === 1) return sorted[0].price;
-
-  const q1  = sorted[Math.floor(sorted.length * 0.25)].price;
-  const q3  = sorted[Math.floor(sorted.length * 0.75)].price;
-  const iqr = q3 - q1;
-  const lo  = q1 - 1.5 * iqr;
-  const hi  = q3 + 1.5 * iqr;
-  const clean = entries.filter(e => e.price >= lo && e.price <= hi);
-  if (!clean.length) return sorted[Math.floor(sorted.length / 2)].price;
-
-  const simpleMean = clean.reduce((s, e) => s + e.price, 0) / clean.length;
-  let sumW = 0, sumWP = 0;
-  for (const e of clean) {
-    const w = decayWeight(e.daysAgo) * (1 / (1 + Math.abs(e.price - simpleMean)));
-    sumW  += w;
-    sumWP += w * e.price;
-  }
-  return sumWP / sumW;
 }
 
 function gradeKey(title) {
@@ -41,34 +18,45 @@ function gradeKey(title) {
   return 'raw';
 }
 
+function weightedMean(entries) {
+  if (!entries.length) return null;
+  let sumW = 0, sumWP = 0;
+  for (const e of entries) {
+    const w = decayWeight(e.daysAgo);
+    sumW  += w;
+    sumWP += w * e.price;
+  }
+  return sumWP / sumW;
+}
+
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
-  const q     = (searchParams.get('q') || '').trim();
-  const appId = req.headers.get('x-ebay-key') || process.env.EBAY_APP_ID;
+  const q      = (searchParams.get('q') || '').trim();
+  const apiKey = req.headers.get('x-rapidapi-key') || process.env.RAPIDAPI_KEY;
 
-  if (!appId || !q) {
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: !appId ? 'no appId' : 'no query' });
+  if (!apiKey || !q) {
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: !apiKey ? 'no apiKey' : 'no query' });
   }
-
-  const url = new URL('https://svcs.ebay.com/services/search/FindingService/v1');
-  url.searchParams.set('OPERATION-NAME',               'findCompletedItems');
-  url.searchParams.set('SERVICE-VERSION',               '1.0.0');
-  url.searchParams.set('SECURITY-APPNAME',              appId);
-  url.searchParams.set('RESPONSE-DATA-FORMAT',          'JSON');
-  url.searchParams.set('keywords',                      q);
-  url.searchParams.set('sortOrder',                     'EndTimeSoonest');
-  url.searchParams.set('paginationInput.entriesPerPage','50');
 
   let resp;
   try {
-    resp = await fetch(url.toString(), { cache: 'no-store' });
+    resp = await fetch('https://ebay-average-selling-price.p.rapidapi.com/findCompletedItems', {
+      method: 'POST',
+      headers: {
+        'x-rapidapi-key':  apiKey,
+        'x-rapidapi-host': 'ebay-average-selling-price.p.rapidapi.com',
+        'Content-Type':    'application/json',
+      },
+      body: JSON.stringify({ keywords: q, max_search_results: 60, remove_outliers: true }),
+      cache: 'no-store',
+    });
   } catch (e) {
     return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `fetch: ${e.message}` });
   }
 
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `eBay ${resp.status}: ${text.slice(0, 300)}` });
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `RapidAPI ${resp.status}: ${text.slice(0, 200)}` });
   }
 
   let data;
@@ -76,28 +64,24 @@ export async function GET(req) {
     return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `JSON parse: ${e.message}` });
   }
 
-  const ack = data?.findCompletedItemsResponse?.[0]?.ack?.[0];
-  if (ack && ack !== 'Success' && ack !== 'Warning') {
-    const errMsg = data?.findCompletedItemsResponse?.[0]?.errorMessage?.[0]?.error?.[0]?.message?.[0] || ack;
-    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: `eBay ack=${ack}: ${errMsg}` });
+  if (!data.success) {
+    return NextResponse.json({ byGrade: {}, weightedMean: null, count: 0, error: data.error || 'API error' });
   }
 
-  const items = data?.findCompletedItemsResponse?.[0]?.searchResult?.[0]?.item || [];
-  const now   = Date.now();
-
-  const buckets    = {};
-  const allEntries = [];
+  const products = data.products || [];
+  const now      = Date.now();
+  const buckets  = {};
+  const allEntries   = [];
   const recentPrices = [];
   const olderPrices  = [];
 
-  for (const item of items) {
-    const title   = item.title?.[0] || '';
-    const price   = parseFloat(item.sellingStatus?.[0]?.currentPrice?.[0]?.['__value__']);
+  for (const item of products) {
+    const price = (parseFloat(item.sale_price) || 0) + (parseFloat(item.shipping_price) || 0);
     if (!price || price <= 0) continue;
 
-    const endTimeStr = item.listingInfo?.[0]?.endTime?.[0] || '';
-    const daysAgo    = endTimeStr ? (now - new Date(endTimeStr).getTime()) / 86_400_000 : 30;
-    const gk         = gradeKey(title);
+    const gk       = gradeKey(item.title || '');
+    const soldDate  = item.date_sold ? new Date(item.date_sold) : null;
+    const daysAgo   = soldDate && !isNaN(soldDate) ? (now - soldDate.getTime()) / 86_400_000 : 30;
 
     if (!buckets[gk]) buckets[gk] = [];
     buckets[gk].push({ price, daysAgo });
@@ -109,11 +93,12 @@ export async function GET(req) {
 
   const byGrade = {};
   for (const [gk, entries] of Object.entries(buckets)) {
-    const wm = robustWeightedMean(entries);
+    const wm = weightedMean(entries);
     if (wm != null) byGrade[gk] = Math.round(wm * 100) / 100;
   }
 
-  const overallWM = robustWeightedMean(allEntries);
+  // RapidAPI already removed outliers — use its average_price as the overall figure
+  const overallWM = data.average_price ?? weightedMean(allEntries);
 
   let trend = null, trendDir = 'stable';
   if (recentPrices.length >= 2 && olderPrices.length >= 2) {
